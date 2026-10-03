@@ -4,7 +4,7 @@
 import {
   blur3, rgbaToGray, frameCandidates, teePresence, solvePath, smoothTrack,
   carefulTrack, checkTrail, mergeFine,
-} from './core.js';
+} from './core.js?v=1.1.0';
 import {
   Input, ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, AudioBufferSink,
   Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource,

@@ -48,3 +48,10 @@ Tests: `node test/run3.mjs` (careful mode on all clips, with what it flags),
 Static site in `docs/`. GitHub Pages serves it from the `main` branch,
 `/docs` folder, so every push to `main` updates the live site. (`netlify.toml`
 points Netlify at the same folder if it's ever hosted there instead.)
+
+## Releasing an update
+
+Bump the version in four places so returning visitors don't mix cached old
+files with new ones: `VERSION` in `docs/app.js`, the `core.js?v=` import in
+`docs/app.js`, and the `app.js?v=` / `style.css?v=` links in `docs/index.html`.
+Add a line to `CHANGELOG.md`. Pushing to `main` publishes.
