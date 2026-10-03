@@ -62,6 +62,9 @@ body {
   gap: 20px;
   grid-template-columns: 1fr;
 }
+@media (max-width: 859px) {
+  .stage { height: min(62vh, 720px); }
+}
 @media (min-width: 860px) {
   .app { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
   .panel { position: sticky; top: 16px; }
@@ -186,4 +189,21 @@ input[type=range] { width: 100%; accent-color: var(--tracer); height: 32px; }
   font: 700 15px/1 var(--font-body);
 }
 .chip:hover { background: rgba(255,210,63,.12); }
+.app.no-stage { grid-template-columns: minmax(0, 720px); justify-content: center; }
+.app.no-stage .stage-wrap { display: none; }
+.app.no-stage .panel { position: static; }
+#doneList { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.clips { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+.clip {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center;
+  border: 1.5px solid var(--felt-3); border-radius: var(--radius-sm); padding: 10px 12px;
+}
+.clip .name { font-weight: 700; overflow-wrap: anywhere; }
+.clip .state { color: var(--moss); font-size: 15px; grid-column: 1; }
+.clip .state.warn { color: var(--flag); }
+.clip .state.bad { color: #ffb4a8; }
+.clip .go { grid-row: 1 / span 2; grid-column: 2; }
+.clip .go.btn { min-height: 40px; padding: 0 14px; font-size: 15px; }
+.clip video { grid-column: 1 / -1; width: 100%; max-height: 40vh; border-radius: 8px; background: #000; margin-top: 6px; }
+.small { font-size: 15px; }
 [hidden] { display: none !important; }

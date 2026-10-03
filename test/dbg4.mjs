@@ -1,0 +1,24 @@
+import fs from 'fs';
+import { spawnSync } from 'child_process';
+import { blur3, frameCandidates, ballColor, teePresence, solvePath } from '../docs/core.js';
+const id = process.argv[2]; const OPTS = JSON.parse(process.env.OPTS || '{}');
+const m = JSON.parse(fs.readFileSync('/home/claude/fgtest/' + id + '.json'));
+const { pts, W0, H0, n, C } = m; const AW = 720, AH = Math.round(H0 * 720 / W0), k = AW / W0;
+const vid = ['/home/claude/b3/', '/home/claude/b4/'].map((d) => d + 'v_' + id + '.mp4').find((p) => fs.existsSync(p));
+const tapF = Math.max(0, pts[0][0] - 8), endF = Math.min(n - 3, tapF + 200), lo = tapF - 2, hi = endF + 2;
+const rgb = spawnSync('ffmpeg', ['-nostdin', '-v', 'error', '-i', vid, '-fps_mode', 'passthrough', '-vf', `select=between(n\\,${lo}\\,${hi}),scale=${AW}:${AH}:flags=area`, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { maxBuffer: 2 ** 31 }).stdout;
+const fsz = AW * AH * 4; const R = (f) => rgb.subarray((f - lo) * fsz, (f - lo + 1) * fsz);
+const G = {}; const g = (f) => G[f] ?? (G[f] = (() => { const a = R(f); const o = new Uint8Array(AW * AH); for (let i = 0, j = 0; i < o.length; i++, j += 4) o[i] = (a[j] * 77 + a[j + 1] * 150 + a[j + 2] * 29) >> 8; return blur3(o, AW, AH); })());
+const cands = {}; for (let f = tapF + 1; f <= endF; f++) cands[f] = frameCandidates(g(f - 2), g(f), g(f + 2), AW, AH, { rgba: R(f) });
+const cr = fs.readFileSync('/home/claude/fgtest/' + id + '.crops'); const crops = []; for (let i = 0; i < n; i++) crops.push(cr.subarray(i * C * C, (i + 1) * C * C));
+const absent = teePresence(crops, C, C, tapF, endF);
+const ref = ballColor(R(tapF), AW, AH, pts[0][1] * k, pts[0][2] * k, 5);
+const tee = { x: pts[0][1] * k, y: pts[0][2] * k, f0: tapF, absent, rgb: OPTS.nocolor ? null : ref };
+const so = { fps: 50, H: Math.max(AW, AH), endF, ...OPTS };
+const show = (p) => p.map((q) => `${q.f}:${Math.round(q.x / k)},${Math.round(q.y / k)}`).join(' ');
+const p1 = solvePath(cands, tee, null, {}, so);
+console.log('free  :', p1.length, show(p1).slice(0, 700));
+// rank of the ball among candidates per frame
+const v = {}; for (const [f, x, y] of pts) v[f] = [x * k, y * k];
+const ranks = Object.keys(v).map(Number).filter((f) => cands[f]).map((f) => { const i = cands[f].findIndex((c) => Math.hypot(c.x - v[f][0], c.y - v[f][1]) < 12); return i; });
+console.log('ball rank per verified frame (-1 = not detected):', ranks.join(' '));

@@ -5,20 +5,27 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
 
 ## How it works
 
-1. Pick a clip and tap the ball sitting at address.
-2. Step to the frame where it first lands (or drops in the cup) and tap it.
-3. The ball is found in every frame between those two points with
-   consecutive-frame differencing, and the most physical path through the
-   candidates is chosen with dynamic programming. The tee is part of the
-   search, so the moment the ball leaves is decided by the solver too.
-4. **Careful mode** (always on): every frame of that first trail is looked at
-   again at full resolution, the path is solved again with those detections,
-   and each frame is checked for a ball under the line. Where it isn't found,
-   a wider window is searched and the path re-solved (twice). Frames that are
-   still uncertain are listed so the person can look at them.
-5. Check it. If the line comes off the ball anywhere, stop on that frame,
-   press **Fix this frame**, tap the ball, and the path is re-solved through it.
-6. **Make the video** renders every frame with the trail and keeps the sound.
+1. Pick one clip or a batch. Tap the ball sitting at address in each — that's
+   the only tap. (Any frame before the shot will do.)
+2. A cheap scan of the tee area finds when the ball leaves. Around that moment
+   every frame is analysed at 720 px in colour: ball candidates come from
+   consecutive-frame differencing, with the player masked out (small blobs
+   inside large moving regions) and skin-coloured blobs penalised against the
+   ball's colour from the tap.
+3. A dynamic-programming solver picks the most physical path from the tee:
+   the ball must leave in a straight line at a speed that carries on, no
+   impossible stops or swerves in the air, and frames are worth more when the
+   ball travels (a drifting arm or shirt barely moves). The trail ends at the
+   first landing — a bounce, or the ball coming down and then lost.
+4. **Careful mode**: every frame is looked at again at full resolution around
+   the line, the path is re-solved, each frame is checked for a ball under the
+   line, a wider window is searched where it isn't (twice), and a slow roll is
+   followed by its look (template matching) to where it stops or drops in.
+5. Check each clip. Frames still uncertain are listed. **Fix this frame** pins
+   the ball (a fix past the end extends the trail); **End the trail here**
+   shortens it.
+6. **Make the videos**: every frame rendered with the trail, sound kept,
+   one MP4 per clip and a zip of all of them.
 
 ## Files
 
@@ -33,15 +40,16 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
 
 ## Accuracy
 
-On 37 hand-checked clips (flights, rolls, shots toward the camera), 35 trace
-correctly from the two taps alone (90% of frames within 40 px at 1440x2560,
-median error 2 px). The two that don't — the ball hidden under the finger at a
-flick, and a ball passing in front of the player's face — are both flagged by
-the self-check at the frames that are wrong, and two hand fixes put them right.
-30 of the 35 good clips come back with nothing to check.
+On 37 hand-checked clips (flights, rolls, chips, shots toward the camera), a
+single tap gives a correct trail on 32: 90% of frames within 40 px at
+1440x2560 (median 2-3 px) and the end at the landing. The misses are a ball
+hidden under the finger at a flick (flagged), a roll starting under the hand,
+and three trails that run a few frames past where a rolling ball stopped
+(one "End the trail here" each).
 
-Tests: `node test/run3.mjs` (careful mode on all clips, with what it flags),
-`node test/run.mjs` (first pass only).
+Tests: `node test/run4.mjs` (single tap, careful mode, all clips — needs the
+original videos), `python3 test/ui_batch.py` (the real page in headless
+Chromium: several clips, taps, trace, end-here, export, zip).
 
 ## Deploy
 
@@ -51,7 +59,7 @@ points Netlify at the same folder if it's ever hosted there instead.)
 
 ## Releasing an update
 
-Bump the version in four places so returning visitors don't mix cached old
-files with new ones: `VERSION` in `docs/app.js`, the `core.js?v=` import in
+Bump the version in five places so returning visitors don't mix cached old
+files with new ones: `VERSION` in `docs/app.js`, the `core.js?v=` and `zip.js?v=` imports in
 `docs/app.js`, and the `app.js?v=` / `style.css?v=` links in `docs/index.html`.
 Add a line to `CHANGELOG.md`. Pushing to `main` publishes.

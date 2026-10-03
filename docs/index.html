@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=1.1.0">
+<link rel="stylesheet" href="style.css?v=2.0.0">
 </head>
 <body>
 <header class="top">
@@ -27,10 +27,10 @@
       <canvas id="stage" aria-label="Video frame. Tap to mark the ball."></canvas>
       <label class="drop" id="drop" for="file">
         <svg viewBox="0 0 120 80" aria-hidden="true" class="drop-arc"><path d="M8 72 Q52 -18 112 58"/><circle cx="112" cy="58" r="5"/></svg>
-        <strong>Choose a shot video</strong>
-        <span>or drop it here</span>
+        <strong>Choose shot videos</strong>
+        <span>one or several, or drop them here</span>
       </label>
-      <input type="file" id="file" accept="video/*" hidden>
+      <input type="file" id="file" accept="video/*" multiple hidden>
       <div class="zoomhint" id="zoomHint" hidden>Zoomed in. Tap the middle of the ball.</div>
     </div>
     <div class="scrub" id="scrub" hidden>
@@ -50,49 +50,40 @@
 
   <section class="panel" id="panel" aria-live="polite">
     <div class="step" data-step="load">
-      <h2>Trace a shot</h2>
-      <p>Film with the phone propped up and still. Then pick the clip — you'll tap the ball twice, and it finds the ball in every frame, checks each one up close, and draws the trail.</p>
-      <label class="btn primary" for="file">Choose a shot video</label>
+      <h2>Trace your shots</h2>
+      <p>Pick one clip or a whole batch. You'll tap the ball once in each, then it finds the ball in every frame, checks each one up close and draws the trail. Careful tracing takes a minute or two per clip.</p>
+      <label class="btn primary" for="file">Choose shot videos</label>
       <ul class="tips">
+        <li>Prop the phone up so it stays still.</li>
         <li>Closer is better: the ball should be easy to see.</li>
-        <li>Higher frame rates (50 or 60 fps) track best.</li>
-        <li>Keep recording until the ball has landed.</li>
+        <li>50 or 60 fps tracks best. Keep filming until the ball lands.</li>
       </ul>
     </div>
 
-    <div class="step" data-step="tee" hidden>
-      <p class="count">Tap 1 of 2</p>
+    <div class="step" data-step="tap" hidden>
+      <p class="count" id="tapCount"></p>
       <h2>Tap the ball before the shot</h2>
       <p>Go to a frame where the ball is sitting still, ready to be hit, and tap it. The view zooms in so you can tap it exactly.</p>
-      <p class="status" id="teeStatus">Not marked yet.</p>
-      <button class="btn primary" id="toLand" disabled>Next: where it lands</button>
-    </div>
-
-    <div class="step" data-step="land" hidden>
-      <p class="count">Tap 2 of 2</p>
-      <h2>Tap where the ball first lands</h2>
-      <p>Step to the frame where the ball first touches down — or drops into the cup — and tap it.</p>
-      <p class="status" id="landStatus">Not marked yet.</p>
+      <p class="status" id="tapStatus">Not marked yet.</p>
       <div class="row">
-        <button class="btn" id="backTee">Back</button>
-        <button class="btn primary" id="trace" disabled>Trace the shot</button>
+        <button class="btn" id="tapBack">Back</button>
+        <button class="btn primary" id="tapNext" disabled>Next clip</button>
       </div>
+      <button class="link" id="tapSkip">Skip this clip</button>
     </div>
 
     <div class="step" data-step="busy" hidden>
+      <p class="count" id="busyClip"></p>
       <h2 id="busyTitle">Reading frames</h2>
       <div class="bar"><div id="barFill"></div></div>
       <p class="status" id="busyText"></p>
+      <p class="status small">Keep this tab open and the screen on.</p>
     </div>
 
-    <div class="step" data-step="review" hidden>
-      <h2>Check the trail</h2>
-      <div id="report" class="report" aria-live="polite"></div>
-      <p>Play it back. If the line comes off the ball anywhere, stop on that frame, press <strong>Fix this frame</strong> and tap the ball.</p>
-      <div class="row">
-        <button class="btn" id="fix">Fix this frame</button>
-        <button class="btn" id="undoFix" disabled>Undo fix</button>
-      </div>
+    <div class="step" data-step="list" hidden>
+      <h2>Your trails</h2>
+      <p id="listIntro">Open a clip to check its trail. Ones with frames to look at are marked.</p>
+      <ul class="clips" id="clipList"></ul>
       <fieldset class="opts">
         <legend>Trail</legend>
         <div class="swatches" role="radiogroup" aria-label="Trail colour">
@@ -104,22 +95,37 @@
         <label class="thick">Thickness
           <input type="range" id="thick" min="0.5" max="2" step="0.25" value="1">
         </label>
-        <label class="check"><input type="checkbox" id="trim" checked> Trim to the shot</label>
+        <label class="check"><input type="checkbox" id="trim" checked> Trim each video to the shot</label>
       </fieldset>
-      <button class="btn primary" id="make">Make the video</button>
-      <button class="link" id="restart">Start over with another clip</button>
+      <button class="btn primary" id="make">Make the videos</button>
+      <button class="link" id="restart">Start over</button>
+    </div>
+
+    <div class="step" data-step="review" hidden>
+      <p class="count" id="reviewName"></p>
+      <h2>Check the trail</h2>
+      <div id="report" class="report" aria-live="polite"></div>
+      <p>Play it back. If the line leaves the ball, stop on that frame, press <strong>Fix this frame</strong> and tap the ball. A fix after the end makes the trail longer.</p>
+      <div class="row">
+        <button class="btn" id="fix">Fix this frame</button>
+        <button class="btn" id="endHere">End the trail here</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="undoFix" disabled>Undo</button>
+        <button class="btn primary" id="reviewDone">Done</button>
+      </div>
     </div>
 
     <div class="step" data-step="done" hidden>
-      <h2>Your video is ready</h2>
-      <video id="result" controls playsinline></video>
+      <h2 id="doneTitle">Your videos are ready</h2>
+      <ul class="clips" id="doneList"></ul>
       <div class="row">
-        <a class="btn primary" id="download" download>Download video</a>
-        <button class="btn" id="share" hidden>Share</button>
+        <a class="btn primary" id="downloadAll" download>Download all</a>
+        <button class="btn" id="shareAll" hidden>Share</button>
       </div>
       <p class="status" id="doneNote"></p>
-      <button class="link" id="again">Change the trail</button>
-      <button class="link" id="restart2">Start over with another clip</button>
+      <button class="link" id="again">Change the trails</button>
+      <button class="link" id="restart2">Start over with new clips</button>
     </div>
 
     <p class="error" id="error" role="alert" hidden></p>
@@ -131,6 +137,6 @@
   <a href="https://github.com/samram126/fingagolf-trail" id="repoLink" rel="noopener">Source and updates</a>
 </footer>
 
-<script type="module" src="app.js?v=1.1.0"></script>
+<script type="module" src="app.js?v=2.0.0"></script>
 </body>
 </html>

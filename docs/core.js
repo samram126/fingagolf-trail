@@ -121,7 +121,7 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
   const scale = (o.scaleShort ?? Math.min(W, H)) / 1440;
   const amin = o.minArea ?? Math.max(2, Math.round(8 * scale * scale));
   const amax = o.maxArea ?? Math.round(20000 * scale * scale);
-  const bodyArea = o.bodyArea ?? Math.round(80000 * scale * scale);
+  const bodyArea = o.bodyArea ?? Math.round(20000 * scale * scale);
   const mergeR = o.mergeR ?? Math.max(2, Math.round(15 * scale));
   const K = o.maxPerFrame ?? 20;
   const n = W * H;
@@ -139,18 +139,31 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
   const opened = o.open ? maxFilter(minFilter(m, W, H, 1), W, H, 1) : m;
   if (o.open) for (let i = 0; i < n; i++) opened[i] = opened[i] && m[i] ? 1 : 0;
 
-  // the player: very large moving regions, grown a little
-  let body = null;
+  // The player: large moving regions. Small blobs inside one (folds of a
+  // shirt, fingers, a face) are not the ball. A ball close to the camera can
+  // itself make a big moving region, but then it IS most of that region —
+  // so only blobs that are small next to their region are dropped.
+  let bodyLab = null, bodyCnt = null;
   if (bodyArea > 0) {
-    const closed = minFilter(maxFilter(mov, W, H, 3), W, H, 3);
-    const { lab, n: nb } = label(closed, W, H);
-    const cnt = new Int32Array(nb + 1);
-    for (let i = 0; i < n; i++) cnt[lab[i]]++;
-    const big = new Uint8Array(n);
-    let any = false;
-    for (let i = 0; i < n; i++) if (lab[i] && cnt[lab[i]] >= bodyArea) { big[i] = 1; any = true; }
-    if (any) body = maxFilter(big, W, H, Math.max(3, Math.round(15 * scale)));
+    const cr = Math.max(2, Math.round(9 * scale));
+    const closed = minFilter(maxFilter(mov, W, H, cr), W, H, cr);
+    const L = label(closed, W, H);
+    const cnt = new Int32Array(L.n + 1);
+    for (let i = 0; i < n; i++) cnt[L.lab[i]]++;
+    bodyLab = L.lab; bodyCnt = cnt;
   }
+  const inBody = (cx, cy, a) => {
+    if (!bodyLab) return false;
+    // look a little around the blob: the region may hug its edge
+    const r = Math.max(2, Math.round(6 * scale));
+    let best = 0;
+    for (const [dx, dy] of [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]]) {
+      const x = Math.min(W - 1, Math.max(0, Math.round(cx + dx))), y = Math.min(H - 1, Math.max(0, Math.round(cy + dy)));
+      const l = bodyLab[y * W + x];
+      if (l && bodyCnt[l] > best) best = bodyCnt[l];
+    }
+    return best >= bodyArea && a < (o.bodyShare ?? 0.12) * best;
+  };
 
   // Blobs as they are, plus merged groups: a streaked ball close to the
   // camera splits in two (the part it shares with the neighbouring frames is
@@ -161,6 +174,8 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
     const { lab, n: nl } = labRes;
     const sx = new Float64Array(nl + 1), sy = new Float64Array(nl + 1);
     const cnt = new Int32Array(nl + 1);
+    const rgba = o.rgba;
+    const sr = rgba ? new Float64Array(nl + 1) : null, sgc = rgba ? new Float64Array(nl + 1) : null, sbc = rgba ? new Float64Array(nl + 1) : null;
     const x0 = new Int32Array(nl + 1).fill(W), x1 = new Int32Array(nl + 1).fill(-1);
     const y0 = new Int32Array(nl + 1).fill(H), y1 = new Int32Array(nl + 1).fill(-1);
     const pieces = isMerged ? new Map() : null;
@@ -170,6 +185,7 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
       if (!l) continue;
       const x = i % W, y = (i - x) / W;
       sx[l] += x; sy[l] += y; cnt[l]++;
+      if (rgba) { sr[l] += rgba[4 * i]; sgc[l] += rgba[4 * i + 1]; sbc[l] += rgba[4 * i + 2]; }
       if (x < x0[l]) x0[l] = x; if (x > x1[l]) x1[l] = x;
       if (y < y0[l]) y0[l] = y; if (y > y1[l]) y1[l] = y;
       if (pieces) {
@@ -186,10 +202,12 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
       const w = x1[l] - x0[l] + 1, h = y1[l] - y0[l] + 1;
       if (Math.max(w, h) > 12 * Math.max(1, Math.min(w, h))) continue;
       const cx = sx[l] / a, cy = sy[l] / a;
-      if (body && body[Math.round(cy) * W + Math.round(cx)]) continue;
+      if (inBody(cx, cy, a)) continue;
       // u: how far off the centroid may be. A streaked ball's centroid
       // wanders along the streak.
-      out.push({ x: cx, y: cy, a, u: Math.min(o.maxU ?? 8, 1.5 + 0.3 * (Math.max(w, h) - Math.min(w, h))), merged: isMerged });
+      const c = { x: cx, y: cy, a, u: Math.min(o.maxU ?? 8, 1.5 + 0.3 * (Math.max(w, h) - Math.min(w, h))), merged: isMerged };
+      if (rgba) c.rgb = [sr[l] / a, sgc[l] / a, sbc[l] / a];
+      out.push(c);
     }
   };
   const single = label(opened, W, H);
@@ -259,30 +277,60 @@ export function teePresence(crops, cw, ch, tapF, endF, o = {}) {
     for (const i of idx) s += Math.abs(c[i] - ref[i]);
     out[f] = s / idx.length / contrast / 0.5;
   }
+  out.ballRadius = rb; // native px, handy for following a roll
   return out;
 }
 
 // ---------- path ----------
 
-// cands: frame -> [{x,y,a}] in analysis px.
-// tee: {x, y, f0, absent} — the tapped ball and the frame it was tapped in;
-//   absent[f] from teePresence (>= 1 means the tee looks empty).
-// E: {f,x,y} where the ball first lands (or drops in).
-// forced: {frame: {x,y}} hand fixes. Returns [{f,x,y,kind}] tee -> landing;
-// the first point is the tee in the last frame before the ball moves.
+// Colour difference between a candidate and the ball, as chromaticity (how
+// the light splits between red, green and blue, ignoring brightness). A white
+// or coloured ball keeps its chromaticity when lit differently; a hand, a
+// face or a shirt does not have the ball's.
+export function chromaDist(a, b) {
+  const sa = a[0] + a[1] + a[2] + 1, sb = b[0] + b[1] + b[2] + 1;
+  return (Math.abs(a[0] / sa - b[0] / sb) + Math.abs(a[1] / sa - b[1] / sb) + Math.abs(a[2] / sa - b[2] / sb)) / 2;
+}
+
+// Average colour of the ball at address: the brighter half of the pixels
+// within radius r of (x, y) in an RGBA image.
+export function ballColor(rgba, W, H, x, y, r) {
+  const px = [];
+  for (let yy = Math.max(0, Math.round(y - r)); yy <= Math.min(H - 1, Math.round(y + r)); yy++) {
+    for (let xx = Math.max(0, Math.round(x - r)); xx <= Math.min(W - 1, Math.round(x + r)); xx++) {
+      if ((xx - x) ** 2 + (yy - y) ** 2 > r * r) continue;
+      const i = 4 * (yy * W + xx);
+      px.push([rgba[i], rgba[i + 1], rgba[i + 2], rgba[i] + rgba[i + 1] + rgba[i + 2]]);
+    }
+  }
+  px.sort((p, q) => q[3] - p[3]);
+  const top = px.slice(0, Math.max(1, Math.ceil(px.length / 2)));
+  const m = [0, 0, 0];
+  for (const p of top) { m[0] += p[0]; m[1] += p[1]; m[2] += p[2]; }
+  return m.map((v) => v / top.length);
+}
+
+// cands: frame -> [{x,y,a,u,rgb}] in analysis px.
+// tee: {x, y, f0, absent, rgb} — the tapped ball, the frame it was tapped in,
+//   absent[f] from teePresence (>= 1: the tee looks empty), and the ball's
+//   colour.
+// E: {f,x,y} to end the path at a known landing, or null to let the solver
+//   end it wherever the ball stops being seen (o.endF bounds the search).
+// forced: {frame: {x,y}} hand fixes. Returns [{f,x,y,kind}] from the tee
+// (last frame before the ball moves) to the end.
 export function solvePath(cands, tee, E, forced = {}, o = {}) {
   for (const lt of [o.leaveThresh ?? 0.8, 0.4, -1]) {
     const r = solveOnce(cands, tee, E, forced, { ...o, leaveThresh: lt });
     if (r) return r;
   }
-  return fallbackPath(tee, E, forced, Math.min(tee.f0, E.f - 1));
+  return fallbackPath(tee, E, forced, E ? Math.min(tee.f0, E.f - 1) : tee.f0);
 }
 
 function fallbackPath(tee, E, forced, f0) {
-  const ff = Object.keys(forced).map(Number).filter((f) => f > f0 && f < E.f).sort((a, b) => a - b);
+  const ff = Object.keys(forced).map(Number).filter((f) => f > f0 && (!E || f < E.f)).sort((a, b) => a - b);
   const pts = [{ f: f0, x: tee.x, y: tee.y, kind: 'tee' }];
   for (const f of ff) pts.push({ f, x: forced[f].x, y: forced[f].y, kind: 'fix' });
-  pts.push({ f: E.f, x: E.x, y: E.y, kind: 'land' });
+  if (E) pts.push({ f: E.f, x: E.x, y: E.y, kind: 'land' });
   return pts;
 }
 
@@ -290,33 +338,47 @@ function solveOnce(cands, tee, E, forced, o) {
   const fps = o.fps ?? 50;
   const H = o.H ?? 960;
   const sig = (o.sigmaAcc ?? 1.1) * Math.pow(50 / fps, 2) * (H / 960);
-  const R = o.nodeReward ?? 2.5;
+  const R0 = o.rewardBase ?? 0.9, R1 = o.rewardMove ?? 2.1;
+  const vRef = (o.vRef ?? 6) * (H / 960) * (50 / fps); // ~16 px/frame at 1440x2560, 50 fps
+  const breakCost = o.breakCost ?? 16;
   const Cm = o.missCost ?? 0.6;
   const Pa = o.absentCost ?? 0.6;
   const K = o.keepPerFrame ?? 8;
   const G = o.maxGap ?? 30;
   const capCost = 400;
   const vmax = (o.vmax ?? 0.3) * H * (50 / fps);
-  const nearTee = (o.nearTee ?? 0.12) * H;
-  const f0 = Math.min(tee.f0, E.f - 1);
-  const forcedFrames = Object.keys(forced).map(Number).filter((f) => f > f0 && f < E.f).sort((a, b) => a - b);
+  const colC = o.colorCost ?? 4;
+  const col0 = o.colorFrom ?? 0.075, col1 = o.colorTo ?? 0.13;
+  const lastF = E ? E.f : o.endF;
+  const f0 = Math.min(tee.f0, lastF - 1);
+  const teeLast = Math.min(lastF - 1, tee.f1 ?? lastF - 1);
+  const forcedFrames = Object.keys(forced).map(Number).filter((f) => f > f0 && f <= lastF).sort((a, b) => a - b);
   const firstForced = forcedFrames.length ? forcedFrames[0] : Infinity;
+  const lastForced = forcedFrames.length ? forcedFrames[forcedFrames.length - 1] : -Infinity;
 
   const nodes = [];
-  for (let f = f0; f < E.f; f++) {
+  for (let f = f0; f <= teeLast; f++) {
     // the ball cannot still be on the tee after a hand fix further along
     if (f >= firstForced) break;
     nodes.push({ f, x: tee.x, y: tee.y, kind: 'tee' });
   }
-  for (let f = f0 + 1; f < E.f; f++) {
+  const detEnd = E ? E.f - 1 : lastF;
+  for (let f = f0 + 1; f <= detEnd; f++) {
     if (forced[f]) { nodes.push({ f, x: forced[f].x, y: forced[f].y, kind: 'fix' }); continue; }
     const c = cands[f];
     if (!c) continue;
     const fineC = c.filter((p) => p.fine);
     const keep = fineC.concat(c.filter((p) => !p.fine).slice(0, Math.max(0, K - fineC.length)));
-    for (const p of keep) nodes.push({ f, x: p.x, y: p.y, u: p.u ?? 1.5, kind: 'det', fine: !!p.fine });
+    for (const p of keep) {
+      let pen = 0;
+      if (tee.rgb && p.rgb) {
+        const d = chromaDist(p.rgb, tee.rgb);
+        pen = colC * Math.min(1, Math.max(0, (d - col0) / (col1 - col0)));
+      }
+      nodes.push({ f, x: p.x, y: p.y, u: p.u ?? 1.5, kind: 'det', fine: !!p.fine, pen });
+    }
   }
-  nodes.push({ f: E.f, x: E.x, y: E.y, kind: 'land' });
+  if (E) nodes.push({ f: E.f, x: E.x, y: E.y, kind: 'land' });
   nodes.sort((a, b) => a.f - b.f || (a.kind === 'tee' ? -1 : 1));
   const N = nodes.length;
   const jumpsForced = (fa, fc) => {
@@ -359,10 +421,17 @@ function solveOnce(cands, tee, E, forced, o) {
     preds[c] = pl;
     cost[c] = new Float64Array(pl.length).fill(Infinity);
     back[c] = new Int32Array(pl.length).fill(-1);
-    const reward = nc.kind === 'det' ? R + (nc.fine ? (o.fineBonus ?? 0.5) : 0) : 0;
+    const baseReward = nc.kind === 'det' ? (nc.fine ? (o.fineBonus ?? 0.5) : 0) - nc.pen : 0;
     for (let j = 0; j < pl.length; j++) {
       const b = pl[j];
       const nb = nodes[b];
+      // A detection is worth more when the thing moved: a ball in the air
+      // travels; an arm or a shirt drifting about barely does.
+      let reward = 0;
+      if (nc.kind === 'det') {
+        const step = Math.hypot(nc.x - nb.x, nc.y - nb.y) / (nc.f - nb.f);
+        reward = R0 + R1 * Math.min(1, step / vRef) + baseReward;
+      }
       const gapC = Cm * (nc.f - nb.f - 1) - reward;
       if (nb.kind === 'tee') {
         // leaving the tee: no velocity to compare against yet
@@ -388,7 +457,15 @@ function solveOnce(cands, tee, E, forced, o) {
           const along = (ux * vx + uy * vy) / ul;
           const tol = 0.5 * sig * t2 * (t1 + t2) + 3;
           let ac = along < -tol ? capCost : (perp / tol) * (perp / tol);
-          if (ac > capCost) ac = capCost;
+          // ...and at a speed that carries on: a ball that left the tee at
+          // 100 px/frame isn't crawling at 10 the frame after. (Something
+          // that "leaves" impossibly fast and then crawls is the player.)
+          const v1 = ul / t1, v2 = Math.hypot(vx, vy) / t2;
+          const ratio = (v1 + 2) / (v2 + 2);
+          const rHi = o.launchRatio ?? 4, rLo = 1 / (o.launchRatioLow ?? 6);
+          if (ratio > rHi) ac += (o.launchCost ?? 6) * Math.log(ratio / rHi) ** 2 + 3;
+          else if (ratio < rLo) ac += (o.launchCost ?? 6) * Math.log(rLo / ratio) ** 2 + 3;
+          if (ac > breakCost) continue; // not a ball leaving the tee
           if (prevCost + ac < best) { best = prevCost + ac; arg = i; }
           continue;
         }
@@ -397,19 +474,32 @@ function solveOnce(cands, tee, E, forced, o) {
         const py = nb.y + (nb.y - na.y) * t2 / t1;
         const d = Math.hypot(nc.x - px, nc.y - py);
         // position error expected from a constant acceleration over the gap,
-        // plus ~1.5 px of centroid noise
+        // plus the centroid noise of the three blobs
         const tol = 0.5 * sig * t2 * (t1 + t2) + (na.u ?? 1.5) + (nb.u ?? 1.5) + (nc.u ?? 1.5);
-        let ac = (d / tol) * (d / tol);
-        if (ac > capCost) ac = capCost;
+        const ac = (d / tol) * (d / tol);
+        // a ball in flight can't do that: whatever comes next is something else
+        if (ac > breakCost) continue;
         const tot = prevCost + ac;
         if (tot < best) { best = tot; arg = i; }
       }
       if (arg >= 0) { cost[c][j] = best + gapC; back[c][j] = arg; }
     }
   }
-  const e = N - 1;
-  let bj = -1, bc = Infinity;
-  for (let j = 0; j < preds[e].length; j++) if (cost[e][j] < bc) { bc = cost[e][j]; bj = j; }
+  // where the path ends: the fixed landing, or the best place to stop
+  let e = -1, bj = -1, bc = Infinity;
+  if (E) {
+    e = N - 1;
+    for (let j = 0; j < preds[e].length; j++) if (cost[e][j] < bc) { bc = cost[e][j]; bj = j; }
+  } else {
+    for (let c = 0; c < N; c++) {
+      const nc = nodes[c];
+      if (nc.kind === 'tee' || nc.f < lastForced) continue;
+      for (let j = 0; j < preds[c].length; j++) {
+        if (cost[c][j] < bc) { bc = cost[c][j]; bj = j; e = c; }
+      }
+    }
+    if (e < 0 || bc >= 0) return null; // nothing that looks like a flight
+  }
   if (bj < 0) return null;
   const path = [];
   let c = e, j = bj;
@@ -422,6 +512,43 @@ function solveOnce(cands, tee, E, forced, o) {
   }
   path.reverse();
   return path.map((p) => ({ f: p.f, x: p.x, y: p.y, kind: p.kind, fine: !!p.fine }));
+}
+
+// ---------- the landing ----------
+
+// Where a trail should end. A shot in the air ends where it first lands: the
+// ball was coming down and then stops coming down (it bounced or stuck). A
+// roll or putt has no such moment and ends where the ball was last seen
+// moving (stopped, or dropped in the cup).
+// path: solver output (analysis px). Returns the index of the last point.
+export function landingIndex(path, o = {}) {
+  const fps = o.fps ?? 50;
+  const H = o.H ?? 960;
+  const k = (H / 960) * (50 / fps);       // px/frame scale
+  const vDown = (o.vDown ?? 1.4) * k;     // ~4 px/frame at 1440x2560, 50 fps
+  const pts = path.filter((p) => p.kind !== 'tee' || p === path[0]);
+  if (pts.length < 4) return path.length - 1;
+  // highest point of the flight (smallest y) after leaving the tee
+  let apex = 0;
+  for (let i = 1; i < pts.length; i++) if (pts[i].y < pts[apex].y) apex = i;
+  const rose = pts[0].y - pts[apex].y > 6 * k;
+  const longGap = Math.max(5, Math.round((o.landGap ?? 0.12) * fps));
+  for (let i = Math.max(apex, 1) + 1; i < pts.length - 1; i++) {
+    const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    const v1 = (b.y - a.y) / (b.f - a.f);  // + = moving down the frame
+    const v2 = (c.y - b.y) / (c.f - b.f);
+    const coming = v1 > vDown && (rose || v1 > 2 * vDown);
+    // it bounced or stuck
+    if (coming && v2 < 0.3 * v1) return path.indexOf(b);
+    // or it was coming down and then wasn't seen for a while: it landed and
+    // stopped (anything found after that is something else moving)
+    if (coming && c.f - b.f >= longGap) return path.indexOf(b);
+  }
+  // rolls: stop at a long gap too, once the ball has travelled
+  for (let i = 2; i < pts.length - 1; i++) {
+    if (pts[i + 1].f - pts[i].f >= 2 * longGap) return path.indexOf(pts[i]);
+  }
+  return path.length - 1;
 }
 
 // ---------- smoothing ----------
@@ -531,6 +658,7 @@ export function indexTrail(trail) {
 export function windowCandidates(prev, cur, next, w, h, nativeShort, o = {}) {
   const s = nativeShort / 1440;
   return frameCandidates(blur3(prev, w, h), blur3(cur, w, h), blur3(next, w, h), w, h, {
+    rgba: o.rgba,
     diff: o.diff ?? 10,
     minArea: Math.max(4, Math.round(8 * s * s)),
     maxArea: Math.round(20000 * s * s),
@@ -549,7 +677,7 @@ export function mergeFine(cands, fine, k) {
   const frames = new Set([...Object.keys(cands), ...Object.keys(fine)].map(Number));
   for (const f of frames) {
     const fl = (fine[f] || []).map((c) => ({
-      x: c.x * k, y: c.y * k, a: c.a * k * k, u: Math.max(0.6, (c.u ?? 1.5) * k), fine: true,
+      x: c.x * k, y: c.y * k, a: c.a * k * k, u: Math.max(0.6, (c.u ?? 1.5) * k), fine: true, rgb: c.rgb,
     }));
     const coarse = (cands[f] || []).filter((c) => !fl.some((q) => Math.hypot(q.x - c.x, q.y - c.y) < 5));
     out[f] = fl.concat(coarse);
@@ -569,13 +697,23 @@ export function mergeFine(cands, fine, k) {
 //    careful passes agree? Where not, search a wider window and re-solve.
 // 4. report what is still uncertain, so the person can look at those frames.
 export async function carefulTrack(a) {
-  const { cands, tee, E, forced = {}, k, W, H, getWindows, onProgress = () => {} } = a;
-  const so = { fps: a.fps, H: a.analysisLong, ...(a.solveOpts || {}) };
+  const { cands, tee, forced = {}, k, W, H, getWindows, onProgress = () => {} } = a;
+  const so = { fps: a.fps, H: a.analysisLong, endF: a.endF, ...(a.solveOpts || {}) };
   const toNative = (tr) => tr.map((p) => ({ f: p.f, x: p.x / k, y: p.y / k }));
   const forcedA = {};
   for (const [f, p] of Object.entries(forced)) forcedA[f] = { x: p.x * k, y: p.y * k };
 
-  const path1 = solvePath(cands, tee, E, forcedA, so);
+  // quick pass, ending wherever the ball stops being seen, then cut at the
+  // first landing
+  let E = a.E || null;
+  let path1 = solvePath(cands, tee, E, forcedA, so);
+  if (!E) {
+    if (path1.length < 3) return { failed: true, path: path1, trail: toNative(path1), quick: toNative(path1), fine: {}, report: { unsure: [], runs: [], seen: 0, total: 0 } };
+    const li = Math.max(landingIndex(path1, so), lastForcedIndex(path1));
+    path1 = path1.slice(0, li + 1);
+    const l = path1[path1.length - 1];
+    E = { f: l.f, x: l.x, y: l.y };
+  }
   const quick = toNative(smoothTrack(path1));
   onProgress('quick', 1);
 
@@ -586,10 +724,10 @@ export async function carefulTrack(a) {
     for (const r of reqs) {
       const w = wins.get(r.f);
       if (!w) continue;
-      const cs = windowCandidates(w.prev, w.cur, w.next, r.rect.w, r.rect.h, Math.min(W, H));
+      const cs = windowCandidates(w.prev, w.cur, w.next, r.rect.w, r.rect.h, Math.min(W, H), { rgba: w.rgba });
       const list = fine[r.f] || (fine[r.f] = []);
       for (const c of cs) {
-        const q = { x: c.x + r.rect.x, y: c.y + r.rect.y, a: c.a, u: c.u };
+        const q = { x: c.x + r.rect.x, y: c.y + r.rect.y, a: c.a, u: c.u, rgb: c.rgb };
         if (!list.some((z) => Math.hypot(z.x - q.x, z.y - q.y) < 3)) list.push(q);
       }
     }
@@ -602,12 +740,18 @@ export async function carefulTrack(a) {
   // full-resolution look around the quick trail
   const byQ = indexTrail(quick);
   const reqs = [];
-  for (let f = quick[0].f + 1; f < E.f; f++) {
+  for (let f = quick[0].f + 1; f <= E.f; f++) {
     if (forced[f]) continue;
     const rect = fineRect(quick, f, W, H, { byF: byQ });
     if (rect) reqs.push({ f, rect });
   }
   await addFine(reqs, 'fine');
+  if (!a.E && fine[E.f] && fine[E.f].length) {
+    // the landing itself, at full resolution: nearest detection to the quick one
+    const qx = E.x / k, qy = E.y / k;
+    const best = fine[E.f].reduce((m, c) => (Math.hypot(c.x - qx, c.y - qy) < Math.hypot(m.x - qx, m.y - qy) ? c : m));
+    if (Math.hypot(best.x - qx, best.y - qy) < 40 * Math.min(W, H) / 1440) E = { f: E.f, x: best.x * k, y: best.y * k };
+  }
   let cur = solveNow();
   let report = checkTrail(cur.trail, fine, quick, forced, W, H);
 
@@ -637,7 +781,22 @@ export async function carefulTrack(a) {
     cur = solveNow();
     report = checkTrail(cur.trail, fine, quick, forced, W, H);
   }
-  return { path: cur.path, trail: cur.trail, quick, fine, report };
+  // rolls: follow the ball on by its look, or trim a tail that left it
+  if (!a.E && a.follow !== false) {
+    const t2 = await followRoll(cur.trail, { W, H, getWindows, fps: a.fps, endF: a.endF, ballRadius: a.ballRadius });
+    if (t2 !== cur.trail) {
+      cur = { path: cur.path, trail: t2 };
+      report = checkTrail(cur.trail, fine, quick, forced, W, H);
+      onProgress('follow', 1);
+    }
+  }
+  return { path: cur.path, trail: cur.trail, quick, fine, report, E };
+}
+
+function lastForcedIndex(path) {
+  let li = 0;
+  path.forEach((p, i) => { if (p.kind === 'fix') li = i; });
+  return li;
 }
 
 // Per-frame check of a finished trail (native px).
@@ -658,7 +817,7 @@ export function checkTrail(trail, fine, quick, forced, W, H, o = {}) {
     const v = Math.hypot(b.x - a.x, b.y - a.y) / 2;
     const tol = Math.max(14 * s, 0.35 * v + 8 * s);
     const ds = (fine[p.f] || []).map((c) => Math.hypot(c.x - p.x, c.y - p.y));
-    const isSeen = ds.length && Math.min(...ds) <= tol;
+    const isSeen = p.seen || (ds.length && Math.min(...ds) <= tol);
     total++;
     if (isSeen) seen++;
     // seen at full resolution: confirmed, whatever the quick pass thought
@@ -688,4 +847,130 @@ export function checkTrail(trail, fine, quick, forced, W, H, o = {}) {
     if (r && f - r.to <= 2) r.to = f; else runs.push({ from: f, to: f });
   }
   return { unsure: flagged, runs, seen, total, estimated: unsure.length - flagged.length };
+}
+
+// ---------- careful mode: carry a rolling ball on, trim the tail ----------
+
+// Normalised cross-correlation of template T (tw x th) inside image I (iw x ih)
+// at every offset; returns the best {x, y, score} (top-left of the match).
+function nccSearch(I, iw, ih, T, tw, th) {
+  let tm = 0;
+  for (let i = 0; i < T.length; i++) tm += T[i];
+  tm /= T.length;
+  let tv = 0;
+  for (let i = 0; i < T.length; i++) tv += (T[i] - tm) ** 2;
+  if (tv < 1) return null;
+  let best = { score: -2, x: 0, y: 0 };
+  const n = tw * th;
+  for (let y = 0; y + th <= ih; y++) {
+    for (let x = 0; x + tw <= iw; x++) {
+      let s = 0, s2 = 0, st = 0;
+      for (let v = 0; v < th; v++) {
+        const row = (y + v) * iw + x, trow = v * tw;
+        for (let u = 0; u < tw; u++) {
+          const p = I[row + u];
+          s += p; s2 += p * p; st += p * (T[trow + u] - tm);
+        }
+      }
+      const iv = s2 - (s * s) / n;
+      if (iv < 1) continue;
+      const score = st / Math.sqrt(iv * tv);
+      if (score > best.score) best = { score, x, y };
+    }
+  }
+  return best;
+}
+
+function cut(img, w, x, y, cw, ch) {
+  const o = new Uint8Array(cw * ch);
+  for (let v = 0; v < ch; v++) o.set(img.subarray((y + v) * w + x, (y + v) * w + x + cw), v * cw);
+  return o;
+}
+
+// After the main trail: if the ball was rolling slowly at the end, follow it
+// by its look (template matching at full resolution) until it stops or drops
+// in; and if the last points have drifted off the ball, trim them.
+// trail: native [{f,x,y}]. Returns a new trail.
+export async function followRoll(trail, a) {
+  const { W, H, getWindows, fps = 50, endF } = a;
+  const s = Math.min(W, H) / 1440;
+  const k = 50 / fps;
+  if (trail.length < 6) return trail;
+  const n = trail.length;
+  const last = trail[n - 1], prev = trail[n - 4];
+  const speed = Math.hypot(last.x - prev.x, last.y - prev.y) / (last.f - prev.f);
+  if (speed > (a.rollSpeed ?? 15) * s * k) return trail; // still flying: not a roll
+  // the template frame must be slow too (a streaked ball matches anything)
+  const tq = trail[Math.max(1, n - 8)], tq0 = trail[Math.max(0, n - 11)];
+  if (Math.hypot(tq.x - tq0.x, tq.y - tq0.y) / Math.max(1, tq.f - tq0.f) > (a.rollSpeed ?? 15) * s * k) return trail;
+  const r = Math.round(Math.max(6 * s, Math.min(40 * s, a.ballRadius ?? 12 * s)));
+  const T = 2 * r + 1;
+
+  // template: the ball at a frame where it was moving slowly and clearly seen
+  const grab = async (f, cx, cy, R) => {
+    const x0 = Math.max(0, Math.round(cx - R)), y0 = Math.max(0, Math.round(cy - R));
+    const x1 = Math.min(W, Math.round(cx + R)), y1 = Math.min(H, Math.round(cy + R));
+    const rect = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    const m = await getWindows([{ f, rect, single: true }]);
+    const w = m.get(f);
+    return w ? { img: w.cur, rect } : null;
+  };
+  const tplAt = async (p) => {
+    const g = await grab(p.f, p.x, p.y, r + 1);
+    if (!g || g.rect.w < T || g.rect.h < T) return null;
+    const ox = Math.round(p.x - r) - g.rect.x, oy = Math.round(p.y - r) - g.rect.y;
+    if (ox < 0 || oy < 0 || ox + T > g.rect.w || oy + T > g.rect.h) return null;
+    return cut(g.img, g.rect.w, ox, oy, T, T);
+  };
+  const matchAt = async (f, px, py, R, tpl) => {
+    const g = await grab(f, px, py, R + r + 1);
+    if (!g || g.rect.w < T || g.rect.h < T) return null;
+    const b = nccSearch(g.img, g.rect.w, g.rect.h, tpl, T, T);
+    if (!b) return null;
+    return { x: g.rect.x + b.x + r, y: g.rect.y + b.y + r, score: b.score };
+  };
+
+  let out = trail.slice();
+  // trim: the line drifted on after the ball stopped. Evidence: in the last
+  // frame, the ball (template) is not under the line but IS sitting at an
+  // earlier point of it. Walk back to where it stopped.
+  let tpl = await tplAt(out[Math.max(1, n - 8)]);
+  if (!tpl) return trail;
+  {
+    const end = out[out.length - 1];
+    const here = await matchAt(end.f, end.x, end.y, Math.round(3 * s), tpl);
+    if (!here || here.score < 0.5) {
+      for (let i = out.length - 2; i >= Math.max(1, out.length - 25); i--) {
+        const q = out[i];
+        const there = await matchAt(end.f, q.x, q.y, Math.round(3 * s), tpl);
+        if (there && there.score >= 0.75) {
+          // the ball is still at q in the last frame: it stopped at q
+          return out.slice(0, i + 1);
+        }
+      }
+    }
+  }
+
+  // extend: follow it while it keeps rolling
+  const maxF = Math.min(endF ?? Infinity, last.f + Math.round(3 * fps));
+  let still = 0, misses = 0;
+  let cur = out[out.length - 1], before = out[out.length - 2];
+  for (let f = cur.f + 1; f <= maxF; f++) {
+    const vx = (cur.x - before.x) / (cur.f - before.f), vy = (cur.y - before.y) / (cur.f - before.f);
+    const px = cur.x + vx, py = cur.y + vy;
+    const R = Math.round(Math.max(3 * r, 2 * Math.hypot(vx, vy) + r));
+    const m = await matchAt(f, px, py, R, tpl);
+    // strict: a ball sinking into the cup or behind something stops matching
+    if (!m || m.score < (a.followMatch ?? 0.8)) break;
+    misses = 0;
+    const step = Math.hypot(m.x - cur.x, m.y - cur.y) / (f - cur.f);
+    if (step < 0.6 * s * k) { if (++still >= 3) break; } else still = 0;
+    const p = { f, x: m.x, y: m.y, seen: true };
+    out.push(p);
+    before = cur; cur = p;
+    if (m.score > 0.85) { const t2 = await tplAt(p); if (t2) tpl = t2; }
+  }
+  // drop the frames where it had already stopped
+  while (still > 0 && out.length > n && still--) out.pop();
+  return out;
 }
