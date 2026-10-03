@@ -418,12 +418,12 @@ finished clip shows the whole arc. Audio carries over. Output is H.264/yuv420p,
 so it plays on phones and social apps.
 
 Use the colour and thickness the user chose (see "Colour and thickness: the
-user picks" below), red and medium if they haven't said.
+user picks" above), red and medium if they haven't said.
 
 ### 5. Hand it back
 
 Copy to `/mnt/user-data/outputs/` and present it. Say how much of the flight
-was traced, and end with the one-line colour and thickness offer below so it's
+was traced, and end with the one-line colour and thickness offer from that section so it's
 easy to ask for a change.
 
 ## Tuning
