@@ -2,141 +2,99 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Fingagolf Trail</title>
-<meta name="description" content="Draw a shot-tracer trail on your finger golf clips, right in your browser.">
-<meta name="theme-color" content="#0e3527">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e3527'/%3E%3Cpath d='M10 52 Q28 -6 54 44' fill='none' stroke='%23ff2a1f' stroke-width='7' stroke-linecap='round'/%3E%3Ccircle cx='54' cy='44' r='6' fill='%23f6f7f0'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=2.1.0">
+<meta name="description" content="A Claude skill that draws a shot-tracer trail on finger golf clips.">
+<style>
+:root {
+  --bg: #f7f6f2; --card: #ffffff; --ink: #1d1d1b; --muted: #5f5e58;
+  --line: #e2e0d8; --red: #d7261e; --red-ink: #ffffff; --code: #efede6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --card: #1f1f1d; --ink: #ecebe6; --muted: #a3a29b;
+    --line: #34332f; --red: #ef3b32; --red-ink: #ffffff; --code: #2a2a27;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151514; --card: #1f1f1d; --ink: #ecebe6; --muted: #a3a29b;
+  --line: #34332f; --red: #ef3b32; --red-ink: #ffffff; --code: #2a2a27;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+main { max-width: 640px; margin: 0 auto; padding: 40px 16px 64px; }
+header svg { display: block; width: 100%; height: auto; margin-bottom: 8px; }
+h1 { font-size: 34px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.01em; }
+.lede { color: var(--muted); margin: 0 0 24px; }
+.dl {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--red); color: var(--red-ink); text-decoration: none;
+  font-weight: 600; padding: 14px 22px; border-radius: 12px;
+}
+.dl:hover { filter: brightness(1.06); }
+.ver { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px 20px 8px; margin-top: 20px; }
+h2 { font-size: 19px; margin: 0 0 10px; }
+ol, ul { padding-left: 22px; margin: 0 0 12px; }
+li { margin: 6px 0; }
+b { font-weight: 600; }
+.q { background: var(--code); border-radius: 8px; padding: 2px 7px; white-space: nowrap; }
+p { margin: 0 0 12px; }
+.muted { color: var(--muted); }
+footer { color: var(--muted); font-size: 14px; margin-top: 28px; }
+a { color: var(--red); }
+</style>
 </head>
 <body>
-<header class="top">
-  <h1 class="brand" aria-label="Fingagolf Trail">
-    <svg class="brand-arc" viewBox="0 0 220 60" aria-hidden="true"><path id="brandPath" d="M6 54 Q100 -26 214 40" /></svg>
-    <span>Fingagolf Trail</span>
-  </h1>
-  <p class="tagline">Put a shot tracer on your finger golf clips. Everything runs on your device — your video is never uploaded.</p>
-</header>
+<main>
+  <header>
+    <svg viewBox="0 0 600 120" role="img" aria-label="A red trail arcing from a tee to a landing spot">
+      <line x1="20" y1="104" x2="580" y2="104" stroke="var(--line)" stroke-width="2"/>
+      <path d="M60 100 Q 300 -60 540 100" fill="none" stroke="var(--red)" stroke-width="6" stroke-linecap="round"/>
+      <circle cx="540" cy="100" r="7" fill="var(--ink)"/>
+      <circle cx="60" cy="100" r="4" fill="var(--muted)"/>
+    </svg>
+    <h1>Fingagolf Trail</h1>
+    <p class="lede">A Claude skill that draws a red shot-tracer trail on your finger golf clips, like a golf broadcast. You send Claude a clip, Claude watches the shot frame by frame and sends back the video with the ball's flight drawn on.</p>
+    <a class="dl" href="fingergolf-trail.zip" download>Download the skill</a>
+    <p class="ver">Version 1.0 · 3 October 2026 · works with any Claude plan</p>
+  </header>
 
-<main class="app">
-  <section class="stage-wrap" aria-label="Video">
-    <div class="stage" id="stageBox">
-      <canvas id="stage" aria-label="Video frame. Tap to mark the ball."></canvas>
-      <label class="drop" id="drop" for="file">
-        <svg viewBox="0 0 120 80" aria-hidden="true" class="drop-arc"><path d="M8 72 Q52 -18 112 58"/><circle cx="112" cy="58" r="5"/></svg>
-        <strong>Choose shot videos</strong>
-        <span>one or several, or drop them here</span>
-      </label>
-      <input type="file" id="file" accept="video/*" multiple hidden>
-      <div class="zoomhint" id="zoomHint" hidden>Zoomed in. Tap the middle of the ball.</div>
-    </div>
-    <div class="scrub" id="scrub" hidden>
-      <button class="icon" id="prev" aria-label="Previous frame">
-        <svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg>
-      </button>
-      <button class="icon" id="play" aria-label="Play">
-        <svg viewBox="0 0 24 24" id="playIcon"><path d="M8 5v14l11-7z" class="fill"/></svg>
-      </button>
-      <button class="icon" id="next" aria-label="Next frame">
-        <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
-      </button>
-      <input type="range" id="slider" min="0" max="0" value="0" aria-label="Frame">
-      <output id="frameNo">0</output>
-    </div>
+  <section>
+    <h2>Add it to Claude</h2>
+    <ol>
+      <li>On claude.ai, open <b>Settings → Capabilities</b> and turn on <b>Code execution and file creation</b>.</li>
+      <li>Go to <b>Customize → Skills</b>, tap <b>+</b>, then <b>Create skill → Upload a skill</b>.</li>
+      <li>Pick the <b>fingergolf-trail.zip</b> you downloaded. Don't unzip it.</li>
+    </ol>
   </section>
 
-  <section class="panel" id="panel" aria-live="polite">
-    <div class="step" data-step="load">
-      <h2>Trace your shots</h2>
-      <p>Pick one clip or a whole batch. You'll tap the ball once in each, then it finds the ball in every frame, checks each one up close and draws the trail. Careful tracing takes a minute or two per clip.</p>
-      <label class="btn primary" for="file">Choose shot videos</label>
-      <ul class="tips">
-        <li>Prop the phone up so it stays still.</li>
-        <li>Closer is better: the ball should be easy to see.</li>
-        <li>50 or 60 fps tracks best. Keep filming until the ball lands.</li>
-      </ul>
-    </div>
-
-    <div class="step" data-step="tap" hidden>
-      <p class="count" id="tapCount"></p>
-      <h2>Tap the ball before the shot</h2>
-      <p>Go to a frame where the ball is sitting still, ready to be hit, and tap it. The view zooms in so you can tap it exactly.</p>
-      <p class="status" id="tapStatus">Not marked yet.</p>
-      <div class="row">
-        <button class="btn" id="tapBack">Back</button>
-        <button class="btn primary" id="tapNext" disabled>Next clip</button>
-      </div>
-      <button class="link" id="tapSkip">Skip this clip</button>
-    </div>
-
-    <div class="step" data-step="busy" hidden>
-      <p class="count" id="busyClip"></p>
-      <h2 id="busyTitle">Reading frames</h2>
-      <div class="bar"><div id="barFill"></div></div>
-      <p class="status" id="busyText"></p>
-      <p class="status small">Keep this tab open and the screen on.</p>
-    </div>
-
-    <div class="step" data-step="list" hidden>
-      <h2>Your trails</h2>
-      <p id="listIntro">Open a clip to check its trail. Ones with frames to look at are marked.</p>
-      <ul class="clips" id="clipList"></ul>
-      <fieldset class="opts">
-        <legend>Trail</legend>
-        <div class="swatches" role="radiogroup" aria-label="Trail colour">
-          <button class="sw on" data-color="#ff0000" aria-label="Red" role="radio" aria-checked="true"></button>
-          <button class="sw" data-color="#ffd400" aria-label="Yellow" role="radio" aria-checked="false"></button>
-          <button class="sw" data-color="#ffffff" aria-label="White" role="radio" aria-checked="false"></button>
-          <button class="sw" data-color="#18c8ff" aria-label="Blue" role="radio" aria-checked="false"></button>
-        </div>
-        <label class="thick">Thickness
-          <input type="range" id="thick" min="0.5" max="2" step="0.25" value="1">
-        </label>
-        <label class="check"><input type="checkbox" id="trim" checked> Trim each video to the shot</label>
-      </fieldset>
-      <button class="btn primary" id="make">Make the videos</button>
-      <button class="link" id="restart">Start over</button>
-    </div>
-
-    <div class="step" data-step="review" hidden>
-      <p class="count" id="reviewName"></p>
-      <h2>Check the trail</h2>
-      <div id="report" class="report" aria-live="polite"></div>
-      <p>Play it back. If the line leaves the ball, stop on that frame, press <strong>Fix this frame</strong> and tap the ball. A fix after the end makes the trail longer.</p>
-      <div class="row">
-        <button class="btn" id="fix">Fix this frame</button>
-        <button class="btn" id="endHere">End the trail here</button>
-      </div>
-      <div class="row">
-        <button class="btn" id="undoFix" disabled>Undo</button>
-        <button class="btn primary" id="reviewDone">Done</button>
-      </div>
-    </div>
-
-    <div class="step" data-step="done" hidden>
-      <h2 id="doneTitle">Your videos are ready</h2>
-      <ul class="clips" id="doneList"></ul>
-      <div class="row">
-        <a class="btn primary" id="downloadAll" download>Download all</a>
-        <button class="btn" id="shareAll" hidden>Share</button>
-      </div>
-      <p class="status" id="doneNote"></p>
-      <button class="link" id="again">Change the trails</button>
-      <button class="link" id="restart2">Start over with new clips</button>
-    </div>
-
-    <p class="error" id="error" role="alert" hidden></p>
+  <section>
+    <h2>Use it</h2>
+    <ol>
+      <li>Start a new chat and attach a clip of a shot.</li>
+      <li>Ask for a trail, for example <span class="q">add a trail to this</span>.</li>
+      <li>Claude finds the ball, checks the trail sits on it, and sends back the new video. If it picked the wrong shot or lost the ball, just say so in the chat.</li>
+    </ol>
+    <p class="muted">Best results: phone held still, ball clearly visible, one shot per clip. Several clips in one chat works too.</p>
   </section>
+
+  <section>
+    <h2>Getting updates</h2>
+    <p>The skill keeps improving. When there's a new version here, download it, delete the old one in <b>Customize → Skills</b>, and upload the new zip.</p>
+  </section>
+
+  <section>
+    <h2>What's new</h2>
+    <ul>
+      <li><b>1.0</b> — First shared version: lofted shots, rolls, chips, shots filmed head-on, flights that leave the picture, white balls on a white rug.</li>
+    </ul>
+  </section>
+
+  <footer>Source and older versions on <a href="https://github.com/samram126/fingagolf-trail">GitHub</a>.</footer>
 </main>
-
-<footer class="foot">
-  <span id="ver"></span>
-  <a href="https://github.com/samram126/fingagolf-trail" id="repoLink" rel="noopener">Source and updates</a>
-</footer>
-
-<script type="module" src="app.js?v=2.1.0"></script>
 </body>
 </html>
