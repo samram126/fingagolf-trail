@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from trailstyle import bezier, draw_polyline, parse_color  # noqa: E402
+from trailstyle import NAMED, bezier, draw_polyline, line_width, parse_color  # noqa: E402
 
 
 DIRECTIONS = {
@@ -99,8 +99,12 @@ def main():
                    help="Seconds frozen on the finished trail at the end.")
     p.add_argument("--fade-in", type=float, default=0.0,
                    help="Seconds of fade at the start of the reveal.")
-    p.add_argument("--color", default="lime")
-    p.add_argument("--width", type=float, default=None)
+    p.add_argument("--color", default="lime",
+                   help="Colour name (" + ", ".join(NAMED) + ") or hex like #FF8800.")
+    p.add_argument("--thickness", default=None,
+                   help="thin, medium, thick or xthick: a share of the frame width.")
+    p.add_argument("--width", type=float, default=None,
+                   help="Exact line thickness in px (overrides --thickness).")
     p.add_argument("--glow", type=float, default=0.85)
     p.add_argument("--no-taper", action="store_true")
     p.add_argument("--no-head", action="store_true",
@@ -140,7 +144,7 @@ def main():
 
     path = bezier(start, end, args.arc)
     color = parse_color(args.color)
-    width = args.width if args.width else max(2.0, W * 0.005)
+    width = line_width(W, args.width, args.thickness, default="thin")
     reveal = max(1, int(round(args.duration * fps)))
 
     cmd = ["ffmpeg", "-y", "-loglevel", "error",

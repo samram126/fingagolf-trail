@@ -17,19 +17,8 @@ import sys
 import cv2
 import numpy as np
 
-
-NAMED = {"white": (255, 255, 255), "yellow": (0, 220, 255),
-         "orange": (0, 145, 255), "green": (80, 255, 60),
-         "red": (0, 0, 255), "blue": (255, 140, 0),
-         "cyan": (255, 255, 40), "pink": (190, 90, 255),
-         "lime": (0, 255, 200)}
-
-
-def parse_color(s):
-    if s.lower() in NAMED:
-        return NAMED[s.lower()]
-    s = s.lstrip("#")
-    return (int(s[4:6], 16), int(s[2:4], 16), int(s[0:2], 16))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from trailstyle import NAMED, THICKNESS, line_width, parse_color  # noqa: E402,F401
 
 
 def reject_outliers(points, tol=3.5, min_px=9.0, passes=2):
@@ -388,9 +377,12 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("track", help="track.json from track_ball.py")
     p.add_argument("-o", "--out", default="trail.mp4")
-    p.add_argument("--color", default="red")
+    p.add_argument("--color", default="red",
+                   help="Colour name (" + ", ".join(NAMED) + ") or hex like #FF8800.")
+    p.add_argument("--thickness", default="medium",
+                   help="thin, medium (default), thick or xthick: a share of the frame width.")
     p.add_argument("--width", type=float, default=None,
-                   help="Line thickness in px. Defaults to ~0.5%% of frame width.")
+                   help="Exact line thickness in px (overrides --thickness).")
     p.add_argument("--glow", type=float, default=0.0,
                    help="Soft glow strength. 0 (default) draws a solid line.")
     p.add_argument("--taper", action="store_true",
@@ -446,7 +438,7 @@ def main():
     # A bit thicker than a hairline: phone video stores colour at half
     # resolution (yuv420), so a thin saturated red line gets its edges
     # averaged with the background and reads as washed-out and soft.
-    width = args.width if args.width else max(3.0, W * 0.0085)
+    width = line_width(W, args.width, args.thickness)
 
     pts = data["points"]
 

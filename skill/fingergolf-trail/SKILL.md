@@ -42,6 +42,52 @@ What the flight actually looks like:
 Search the **whole frame**, top included, every time. Never conclude a clip has
 no flight frames from a cropped view.
 
+## Colour and thickness: the user picks
+
+The trail's colour and thickness are the user's choice. Defaults: **red,
+medium**.
+
+Pass them to `render_trail.py` (and `draw_trail.py` in drawn mode) as
+`--color '#RRGGBB'` and `--width <px>`, where px = the video's displayed width
+(after rotation, see the rotation section) × the share below, rounded.
+Hex and `--width` work with every version of the scripts.
+
+| Colour | Hex | | Thickness | Share of width | at 1080 wide | at 1440 wide |
+|---|---|---|---|---|---|---|
+| red | #FF0000 | | thin | 0.5% | 5 px | 7 px |
+| orange | #FF9100 | | medium | 0.85% | 9 px | 12 px |
+| yellow | #FFDC00 | | thick | 1.3% | 14 px | 19 px |
+| gold | #FFBE00 | | extra thick | 1.8% | 19 px | 26 px |
+| lime | #C8FF00 | | | | | |
+| green | #3CFF50 | | | | | |
+| cyan | #28FFFF | | | | | |
+| blue | #008CFF | | | | | |
+| purple | #A03CFF | | | | | |
+| pink | #FF5ABE | | | | | |
+| magenta | #FF00FF | | | | | |
+| white | #FFFFFF | | | | | |
+| black | #000000 | | | | | |
+
+- **They said it in the request** ("make it blue", "thick yellow trail",
+  "#00FFAA"): use it on the first render. Plain words: "thicker" = one step up
+  from the current thickness, "thinner" = one step down, "bold"/"fat" =
+  thick, "really thick" = extra thick, "skinny"/"fine" = thin, or an exact
+  pixel number if they give one. A colour not in the table (teal, violet…) →
+  the nearest one, or any hex they give.
+- **They didn't say**: don't ask before rendering. Render red/medium, and end
+  the reply with one line offering the options, e.g.:
+  *Want a different look? Colours: red, orange, yellow, gold, lime, green,
+  cyan, blue, purple, pink, magenta, white, black, or any hex code. Thickness:
+  thin, medium, thick, extra thick.*
+- **They ask for a change afterwards**: re-run only the render on the same
+  `track.json` with the new `--color` / `--width`. Never re-track for a look
+  change — keep `track.json` around for this.
+- **The choice sticks**: once the user picks a look, use it for every later
+  clip in the conversation (a whole batch included) until they change it.
+- If the chosen colour will be hard to see on that footage (green on a green
+  mat, white on a white rug), say so and suggest one that stands out, but
+  still render what they asked for.
+
 ## Read this first: most failures are the footage, not the settings
 
 A trail can only be drawn through frames where the ball was actually
@@ -121,7 +167,7 @@ common case:
 ```bash
 python3 scripts/find_ball.py <video> --out ball.txt --preview ball_preview.png
 python3 scripts/points_to_track.py <video> --out track.json --points-file ball.txt
-python3 scripts/render_trail.py track.json -o trail.mp4 --color lime
+python3 scripts/render_trail.py track.json -o trail.mp4 --color '#FF0000' --width 12
 ```
 
 It finds the ball at rest in the background, takes the frame it disappears as
@@ -267,7 +313,7 @@ where the ball is clear are needed; the gaps are filled in:
 
 ```bash
 python3 scripts/points_to_track.py <video> --out track.json --points-file ball.txt
-python3 scripts/render_trail.py track.json -o trail.mp4 --color lime --smooth 3
+python3 scripts/render_trail.py track.json -o trail.mp4 --smooth 3
 ```
 
 `draw_trail.py --grid <frame>` stamps a coordinate grid on a frame, which makes
@@ -364,17 +410,21 @@ something persistent and stationary, not a ball.
 ### 4. Render
 
 ```bash
-python3 scripts/render_trail.py track.json -o trail.mp4 --color lime
+python3 scripts/render_trail.py track.json -o trail.mp4 --color '#FF0000' --width 12
 ```
 
 The trail accumulates — once the ball passes a point it stays lit, so the
 finished clip shows the whole arc. Audio carries over. Output is H.264/yuv420p,
 so it plays on phones and social apps.
 
+Use the colour and thickness the user chose (see "Colour and thickness: the
+user picks" below), red and medium if they haven't said.
+
 ### 5. Hand it back
 
-Copy to `/mnt/user-data/outputs/` and present it. Say which color was used and
-how much of the flight was traced, so it's easy to ask for a change.
+Copy to `/mnt/user-data/outputs/` and present it. Say how much of the flight
+was traced, and end with the one-line colour and thickness offer below so it's
+easy to ask for a change.
 
 ## Tuning
 
@@ -398,10 +448,9 @@ separates a real shot from things that flicker in place.
 
 `render_trail.py`:
 
-- `--color` — `lime`, `cyan`, `yellow`, `orange`, `red`, `blue`, `pink`,
-  `green`, `white`, or `#RRGGBB`. Pick one that fights the background: lime and
-  cyan read well on grass and wood, orange on pale carpet.
-- `--width` — thickness in px, defaults to ~0.5% of frame width.
+- `--color` — `'#RRGGBB'` (see the colour table above); default red.
+- `--width` — thickness in px (see the thickness table above); default
+  medium, ~0.85% of frame width.
 - `--glow` — glow strength, `0` for a flat line.
 - `--no-taper` — constant thickness instead of thin-at-launch.
 - `--smooth` — averaging window; raise if the arc wobbles.
@@ -533,7 +582,8 @@ red (#FF0000), no glow, no taper, no white core in the head. The old glow was a
 Gaussian blur of the line — that is exactly what reads as "fuzzy". `--glow`,
 `--taper`, `--head-core` and `--color` bring the old styles back on request.
 
-The line is ~0.85% of frame width (about 12px on 1440-wide footage). Phone video
+The line is ~0.85% of frame width (about 12px on 1440-wide footage) — the
+`medium` thickness. Phone video
 stores colour at half resolution (yuv420), so a hairline of saturated red gets
 its edges averaged into the background and looks washed out and soft.
 
