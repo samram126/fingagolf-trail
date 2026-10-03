@@ -1,7 +1,7 @@
 // Replays verified clips with only the two taps a user makes, and measures
 // the drawn trail against the hand-verified ball positions (native px).
 import fs from 'fs';
-import { blur3, frameCandidates, teePresence, solvePath, smoothTrack } from '../site/core.js';
+import { blur3, frameCandidates, teePresence, solvePath, smoothTrack } from '../docs/core.js';
 
 const dir = '/home/claude/fgtest/';
 const ids = process.argv.slice(2).length ? process.argv.slice(2)

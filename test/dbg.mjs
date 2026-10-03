@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { blur3, frameCandidates, teePresence, solvePath, smoothTrack } from '../site/core.js';
+import { blur3, frameCandidates, teePresence, solvePath, smoothTrack } from '../docs/core.js';
 const id = process.argv[2]; const dir='/home/claude/fgtest/';
 const m = JSON.parse(fs.readFileSync(dir+id+'.json')); const fr=fs.readFileSync(dir+id+'.frames');
 const {AW,AH,n,pts,W0}=m; const sc=AW/W0; const first=pts[0], last=pts[pts.length-1];

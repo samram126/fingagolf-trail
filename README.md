@@ -17,10 +17,10 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
 
 ## Files
 
-- `site/core.js` — tracking: candidates, tee presence, path solver, smoothing.
+- `docs/core.js` — tracking: candidates, tee presence, path solver, smoothing.
   No DOM, so the tests run it in Node.
-- `site/app.js` — the page: taps, preview, analysis loop, MP4 export.
-- `site/vendor/mediabunny.min.mjs` — [Mediabunny](https://mediabunny.dev)
+- `docs/app.js` — the page: taps, preview, analysis loop, MP4 export.
+- `docs/vendor/mediabunny.min.mjs` — [Mediabunny](https://mediabunny.dev)
   (MPL-2.0, unmodified) for WebCodecs decoding and MP4 muxing.
 - `test/run.mjs` — replays clips with known ball positions using only the two
   taps and reports the error. `test/ui_test.py` drives the real page in
@@ -35,4 +35,6 @@ and a ball passing in front of the player's face.
 
 ## Deploy
 
-Static site; Netlify publishes `site/` (see `netlify.toml`).
+Static site in `docs/`. GitHub Pages serves it from the `main` branch,
+`/docs` folder, so every push to `main` updates the live site. (`netlify.toml`
+points Netlify at the same folder if it's ever hosted there instead.)

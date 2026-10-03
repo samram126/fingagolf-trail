@@ -1,6 +1,6 @@
 // What one or two hand fixes do for the clips the taps alone can't handle.
 import fs from 'fs';
-import { blur3, frameCandidates, teePresence, solvePath, smoothTrack } from '../site/core.js';
+import { blur3, frameCandidates, teePresence, solvePath, smoothTrack } from '../docs/core.js';
 const dir = '/home/claude/fgtest/';
 for (const [id, fixFrames] of [['259', [40]], ['259', [38, 45]], ['293', [45]], ['293', [42, 52]], ['280', [10]]]) {
   const m = JSON.parse(fs.readFileSync(dir + id + '.json'));

@@ -14,7 +14,7 @@ for ln in open(ptsf):
 pts.sort()
 tee, land = pts[0], pts[-1]
 
-srv = subprocess.Popen(['python3', '-m', 'http.server', '8765', '-d', os.path.join(os.path.dirname(__file__), '..', 'site')],
+srv = subprocess.Popen(['python3', '-m', 'http.server', '8765', '-d', os.path.join(os.path.dirname(__file__), '..', 'docs')],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 time.sleep(1)
 try:
