@@ -152,8 +152,10 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
     for (let i = 0; i < n; i++) cnt[L.lab[i]]++;
     bodyLab = L.lab; bodyCnt = cnt;
   }
+  const keep = o.keepNear; // the tee: the ball starts right by the hand
   const inBody = (cx, cy, a) => {
     if (!bodyLab) return false;
+    if (keep && Math.hypot(cx - keep.x, cy - keep.y) < keep.r) return false;
     // look a little around the blob: the region may hug its edge
     const r = Math.max(2, Math.round(6 * scale));
     let best = 0;
@@ -225,10 +227,13 @@ export function frameCandidates(prev, cur, next, W, H, o = {}) {
 // >= 1 = clearly not). The path solver turns this into a small cost for
 // "still on the tee", so it decides itself when the ball leaves — a hand
 // covering the ball before a flick no longer fools it.
+// o.refF: compare against this frame instead (the ball's size and contrast
+// are still measured in the tapped frame).
 export function teePresence(crops, cw, ch, tapF, endF, o = {}) {
   const ref = crops[tapF];
   const out = new Float32Array(endF + 1);
   if (!ref) return out;
+  const cmp = (o.refF !== undefined && crops[o.refF]) ? crops[o.refF] : ref;
   // where the ball sits in the crop (the crop is shifted at frame edges)
   const cx = Math.round(o.cx ?? (cw >> 1)), cy = Math.round(o.cy ?? (ch >> 1));
   const edge = Math.max(3, Math.min(cx, cy, cw - 1 - cx, ch - 1 - cy));
@@ -274,11 +279,202 @@ export function teePresence(crops, cw, ch, tapF, endF, o = {}) {
     const c = crops[f];
     if (!c) { out[f] = 1; continue; }
     let s = 0;
-    for (const i of idx) s += Math.abs(c[i] - ref[i]);
+    for (const i of idx) s += Math.abs(c[i] - cmp[i]);
     out[f] = s / idx.length / contrast / 0.5;
   }
   out.ballRadius = rb; // native px, handy for following a roll
+  out.contrast = Math.abs(inner - outer);
   return out;
+}
+
+// ---------- which part of the clip to search ----------
+
+// pres: teePresence over [tapF, n). Decides whether the tapped ball can be
+// seen well enough to tell when it leaves, and which frames to search.
+//  - visible ball: the shot starts where the tee empties and stays empty
+//    (a hand covering the ball for a moment doesn't count: the ball comes
+//    back); search from just before that to `seconds` after.
+//  - ball too faint to see (tiny, or white on a white rug): the tee can't be
+//    trusted, so search a longer stretch after the tap and let the path solver
+//    find the launch from the motion alone.
+export function planWindow(pres, tapF, n, fps, o = {}) {
+  const reliable = (pres.ballRadius ?? 0) >= (o.minRadius ?? 3) && (pres.contrast ?? 0) >= (o.minContrast ?? 18);
+  const secs = o.seconds ?? 4;
+  if (!reliable) {
+    return { reliable, leave: -1, f0: tapF, endF: Math.min(n - 3, tapF + Math.round((o.blindSeconds ?? 10) * fps)) };
+  }
+  const hold = Math.max(3, Math.round(0.3 * fps));
+  const back = Math.round(2 * fps);
+  const med = (a, b) => {
+    const v = [];
+    for (let i = Math.max(tapF, a); i < Math.min(b, pres.length); i++) if (Number.isFinite(pres[i])) v.push(pres[i]);
+    v.sort((x, y) => x - y);
+    return v.length ? v[v.length >> 1] : 0;
+  };
+  // the highest level the tee holds for `hold` frames between a and b
+  const held = (a, b) => {
+    let best = 0;
+    for (let f = a; f + hold <= Math.min(b, pres.length); f++) {
+      let m = Infinity;
+      for (let j = 0; j < hold; j++) m = Math.min(m, Number.isFinite(pres[f + j]) ? pres[f + j] : 0);
+      best = Math.max(best, m);
+    }
+    return best;
+  };
+  let leave = -1, firstRun = -1, before = 0;
+  for (let f = tapF + 1; f + hold < n && leave < 0; f++) {
+    let gone = true;
+    for (let j = 0; j < hold; j++) if (!(pres[f + j] >= 1)) { gone = false; break; }
+    if (!gone) continue;
+    if (firstRun < 0) firstRun = f;
+    // If the tee already looked different just before (the club or a hand
+    // touching the ball in the tapped frame, then moving off it), that slow
+    // change isn't the ball: the ball leaving is a jump to the empty-tee
+    // level, which it then holds.
+    const pre = f - tapF >= 2 ? med(f - 5, f) : 0;
+    if (pre >= 0.3) {
+      const top = held(f, f + Math.round(3 * fps));
+      if (med(f, f + 5) < Math.max(1, 0.6 * top)) continue;
+    }
+    // does the ball come back within 2 s? then it was only covered
+    const thr = Math.max(0.5, pre + 0.45);
+    let back2 = false;
+    for (let j = f + hold; j < Math.min(n, f + back); j++) {
+      let run = 0;
+      for (let q = j; q < Math.min(n, j + 4); q++) if (pres[q] < thr) run++;
+      if (run >= 4) { back2 = true; break; }
+    }
+    if (!back2) { leave = f; before = pre; } else f += hold;
+  }
+  if (leave < 0) leave = firstRun;
+  const f0 = leave > 0 ? Math.max(tapF, leave - Math.round(0.5 * fps)) : tapF;
+  const endF = Math.min(n - 3, (leave > 0 ? leave : tapF) + Math.round(secs * fps));
+  // compare the tee with how it looked just before the hit rather than at the
+  // tap, when those differ (the caller recomputes presence from refF)
+  const refF = leave > 0 && before >= 0.3 ? Math.max(tapF, leave - Math.round(0.16 * fps)) : undefined;
+  return { reliable, leave, f0, endF, refF };
+}
+
+// Which frame to take the ball's colour from: just before the hit (where the
+// presence scan still sees the ball), else the tapped frame.
+export function colourFrame(plan, pres, tapF, fps) {
+  if (!plan.reliable || !(plan.leave > 0)) return tapF;
+  const cf = Math.max(tapF, plan.leave - Math.round(0.16 * fps));
+  return pres[cf] < 0.5 ? cf : tapF;
+}
+
+// ---------- the launch, when the tee can't be seen ----------
+
+// The first moment something leaves the tap point in a straight line, moving
+// steadily away for several frames: that's the ball being hit. A hand or a
+// backswing near the tee doesn't do that (it turns back). Used when the ball
+// at address was too faint to watch. cands/tee in analysis px.
+export function findLaunch(cands, tee, f0, endF, o = {}) {
+  const H = o.H ?? 960, fps = o.fps ?? 50;
+  const kv = (H / 960) * (50 / fps);
+  const rStart = (o.launchStart ?? 0.06) * H;
+  const minStep = (o.launchMinStep ?? 2) * kv;
+  // ~0.16 s of steady flight: a club or hand turns back sooner, a ball
+  // keeps going (or leaves the picture)
+  const need = o.launchFrames ?? Math.max(5, Math.round(0.16 * fps));
+  const maxTurn = Math.cos(((o.launchTurn ?? 20) * Math.PI) / 180);
+  const found = [];
+  for (let f = f0 + 1; f <= endF; f++) {
+    for (const c0 of cands[f] || []) {
+      const d0 = Math.hypot(c0.x - tee.x, c0.y - tee.y);
+      if (d0 > rStart || d0 < 1) continue;
+      const ux = (c0.x - tee.x) / d0, uy = (c0.y - tee.y) / d0;
+      const chain = [{ f, ...c0, d: d0 }];
+      while (chain.length < need) {
+        const last = chain[chain.length - 1];
+        let nxt = null;
+        for (let g = 1; g <= 2 && !nxt; g++) {
+          for (const c of cands[last.f + g] || []) {
+            const d = Math.hypot(c.x - tee.x, c.y - tee.y);
+            if (d < last.d + minStep * g) continue;            // keeps moving away
+            const cx = (c.x - tee.x) / d, cy = (c.y - tee.y) / d;
+            if (cx * ux + cy * uy < maxTurn) continue;           // in a straight line
+            const step = Math.hypot(c.x - last.x, c.y - last.y) / g;
+            const prevStep = chain.length > 1 ? Math.hypot(last.x - chain[chain.length - 2].x, last.y - chain[chain.length - 2].y) / (last.f - chain[chain.length - 2].f) : step;
+            if (step > 3 * prevStep + 4 * kv || step < prevStep / 3 - 4 * kv) continue; // steady
+            if (!nxt || d < nxt.d) nxt = { f: last.f + g, ...c, d };
+          }
+        }
+        if (!nxt) break;
+        chain.push(nxt);
+      }
+      // a ball that flies out of the picture can't give five frames
+      const lastP = chain[chain.length - 1];
+      const nearEdge = lastP.y < 0.04 * H || lastP.x < 0.04 * H || lastP.x > (o.W ?? Infinity) - 0.04 * H;
+      if (chain.length >= need || (chain.length >= 3 && nearEdge)) {
+        const travel = lastP.d - chain[0].d;
+        const speed = travel / (lastP.f - chain[0].f);
+        found.push({ f, chain, speed, score: speed * Math.min(chain.length, 8) });
+      }
+    }
+  }
+  if (!found.length) return null;
+  // the earliest launch that is nearly as strong as the strongest: a hand
+  // drifting off after placing the ball is slower than the ball being hit
+  const best = Math.max(...found.map((q) => q.score));
+  const pick = found.find((q) => q.score >= (o.launchShare ?? 0.5) * best);
+  return { ...pick, all: found };
+}
+
+// Try each plausible launch, trace the flight from it, keep the best one.
+// (A real flight from the tee earns far more than an arm moving off it.)
+export function pickLaunch(cands, tee, found, so) {
+  if (!found || !found.all || !found.all.length) return null;
+  const H = so.H ?? 960, fps = so.fps ?? 50;
+  // trace the flight a launch at frame f would give, and judge it
+  const judge = (f) => {
+    const t = { ...tee, launch: f, f1: f - 1 };
+    const p = solvePath(cands, t, null, {}, so);
+    if (p.length < 3) return null;
+    // judge what would be drawn: solve again to the landing it would end at,
+    // and score it with the solver's own measure (rewards for a ball moving,
+    // minus penalties for anything a ball can't do)
+    const end = p[landingIndex(p, so)];
+    if (end.kind === 'tee') return null;
+    const p2 = solvePath(cands, t, { f: end.f, x: end.x, y: end.y }, {}, so);
+    if (p2.cost === undefined) return null;
+    const dets = p2.filter((q) => q.kind === 'det');
+    let travel = 0;
+    for (let i = 1; i < dets.length; i++) travel += Math.hypot(dets[i].x - dets[i - 1].x, dets[i].y - dets[i - 1].y);
+    const perNode = dets.length ? -p2.cost / dets.length : 0;
+    const good = dets.length >= 8 && travel >= 0.12 * H && perNode >= (so.goodPerNode ?? 1.5);
+    if (so.debugLaunch) console.log('launch try', f, 'nodes', dets.length, 'travel', Math.round(travel), 'per node', perNode.toFixed(2), 'ends', end.f, good ? 'GOOD' : '');
+    return { f, cost: p2.cost, perNode, travel, n: dets.length, good };
+  };
+  // earliest first: the shot right after the tap. (Ranking by speed instead
+  // lets an arm swinging out of the picture later crowd out the real hit.)
+  const frames = [];
+  for (const q of [...found.all].sort((a, b) => a.f - b.f)) {
+    if (!frames.some((f) => Math.abs(f - q.f) <= 1)) frames.push(q.f);
+  }
+  frames.length = Math.min(frames.length, so.launchTries ?? 40);
+  let best = null, firstGood = null;
+  for (const f of frames) {
+    const cand = judge(f);
+    if (!cand) continue;
+    if (cand.good) { firstGood = cand; break; }
+    if (!best || cand.cost < best.cost) best = cand;
+  }
+  if (!firstGood) return best;
+  // A hand at the ball can start a weaker chain a few frames before the hit;
+  // the hit itself is the strongest departure just after. Start there if it
+  // still gives a good flight, so the trail doesn't begin with a hook.
+  const near = (f) => found.all.filter((q) => Math.abs(q.f - f) <= 1).reduce((m, q) => Math.max(m, q.score), 0);
+  let strongest = null;
+  for (const q of found.all) {
+    if (q.f <= firstGood.f || q.f > firstGood.f + Math.round(0.12 * fps)) continue;
+    if (!strongest || q.score > strongest.score) strongest = q;
+  }
+  if (strongest && strongest.score > 1.5 * near(firstGood.f)) {
+    const later = judge(strongest.f);
+    if (later && later.good) return later;
+  }
+  return firstGood;
 }
 
 // ---------- path ----------
@@ -308,6 +504,37 @@ export function ballColor(rgba, W, H, x, y, r) {
   const m = [0, 0, 0];
   for (const p of top) { m[0] += p[0]; m[1] += p[1]; m[2] += p[2]; }
   return m.map((v) => v / top.length);
+}
+
+// What white looks like in this room: the brightest pixels that aren't
+// blown out. Used as the ball's colour when the tapped ball is too faint to
+// sample — a white ball under warm light is tan, and a hand is clearly more
+// orange than that.
+// Only the area around the tee (cx, cy, radius R) is used: a window full of
+// daylight elsewhere in the picture is a different light.
+export function whiteRef(rgba, W, H, cx = W / 2, cy = H / 2, R = Math.max(W, H)) {
+  const hist = new Uint32Array(766);
+  const x0 = Math.max(0, Math.round(cx - R)), x1 = Math.min(W, Math.round(cx + R));
+  const y0 = Math.max(0, Math.round(cy - R)), y1 = Math.min(H, Math.round(cy + R));
+  const idx = [];
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) idx.push(y * W + x);
+  for (const i of idx) {
+    const r = rgba[4 * i], g = rgba[4 * i + 1], b = rgba[4 * i + 2];
+    if (r > 250 && g > 250 && b > 250) continue;
+    hist[r + g + b]++;
+  }
+  let total = 0;
+  for (const h of hist) total += h;
+  let cut = 765, acc = 0;
+  while (cut > 0 && acc + hist[cut] < total * 0.05) acc += hist[cut--];
+  const m = [0, 0, 0];
+  let c = 0;
+  for (const i of idx) {
+    const r = rgba[4 * i], g = rgba[4 * i + 1], b = rgba[4 * i + 2];
+    if (r > 250 && g > 250 && b > 250) continue;
+    if (r + g + b >= cut) { m[0] += r; m[1] += g; m[2] += b; c++; }
+  }
+  return c ? m.map((v) => v / c) : null;
 }
 
 // cands: frame -> [{x,y,a,u,rgb}] in analysis px.
@@ -341,6 +568,14 @@ function solveOnce(cands, tee, E, forced, o) {
   const R0 = o.rewardBase ?? 0.9, R1 = o.rewardMove ?? 2.1;
   const vRef = (o.vRef ?? 6) * (H / 960) * (50 / fps); // ~16 px/frame at 1440x2560, 50 fps
   const breakCost = o.breakCost ?? 16;
+  const nearR = (o.nearTee ?? 0.06) * H;
+  // A ball can't vanish in the middle of the picture for long (a light or
+  // the ceiling behind it hides it for a few frames at most). Longer gaps
+  // are only allowed when it left the picture and came back.
+  const fw = o.frameW, fh = o.frameH;
+  const longHide = Math.floor((o.longHide ?? 0.25) * fps);
+  const em = 0.06 * Math.min(fw || Infinity, fh || Infinity);
+  const atEdge = (p) => p.x < em || p.y < em || p.x > fw - em || p.y > fh - em;
   const Cm = o.missCost ?? 0.6;
   const Pa = o.absentCost ?? 0.6;
   const K = o.keepPerFrame ?? 8;
@@ -363,7 +598,8 @@ function solveOnce(cands, tee, E, forced, o) {
     nodes.push({ f, x: tee.x, y: tee.y, kind: 'tee' });
   }
   const detEnd = E ? E.f - 1 : lastF;
-  for (let f = f0 + 1; f <= detEnd; f++) {
+  const detStart = Math.max(f0 + 1, tee.launch ?? 0);
+  for (let f = detStart; f <= detEnd; f++) {
     if (forced[f]) { nodes.push({ f, x: forced[f].x, y: forced[f].y, kind: 'fix' }); continue; }
     const c = cands[f];
     if (!c) continue;
@@ -392,7 +628,8 @@ function solveOnce(cands, tee, E, forced, o) {
     const nc = nodes[c];
     if (nc.kind === 'tee') {
       const absent = tee.absent ? Math.min(1.5, tee.absent[nc.f] || 0) : 0;
-      const step = absent >= 1 ? Pa : 0;
+      // waiting costs a hair per frame so the first shot after the tap wins
+      const step = (absent >= 1 ? Pa : 0) + 0.01;
       if (prevTee < 0) {
         preds[c] = [-1]; cost[c] = Float64Array.of(0); back[c] = Int32Array.of(-1);
       } else {
@@ -414,8 +651,18 @@ function solveOnce(cands, tee, E, forced, o) {
       if (nb.kind === 'tee' && tee.absent && nb.f + 1 < tee.absent.length &&
           tee.absent[nb.f + 1] < (o.leaveThresh ?? 0.8)) continue;
       const gap = nc.f - nb.f;
+      if (fw !== undefined && gap > longHide && nb.kind === 'det' && nc.kind === 'det' && !(atEdge(nb) && atEdge(nc))) continue;
       const sp = Math.hypot(nc.x - nb.x, nc.y - nb.y) / gap;
       if (sp > vmax && (nc.kind === 'det' || nb.kind === 'det')) continue;
+      // Near the tee a ball only moves away. Slow drifting back toward it is
+      // a hand or club. (A head-on ball can come down past the tee, but fast.)
+      if (nb.kind === 'det' && nc.kind === 'det') {
+        const db = Math.hypot(nb.x - tee.x, nb.y - tee.y);
+        if (db < 2 * nearR) {
+          const dc = Math.hypot(nc.x - tee.x, nc.y - tee.y);
+          if (dc < db - 1 && sp < vRef) continue;
+        }
+      }
       pl.push(b);
     }
     preds[c] = pl;
@@ -427,12 +674,18 @@ function solveOnce(cands, tee, E, forced, o) {
       const nb = nodes[b];
       // A detection is worth more when the thing moved: a ball in the air
       // travels; an arm or a shirt drifting about barely does.
+      // Right next to the tee only movement counts: before the hit the hand
+      // and club fiddle about there, and a ball that has left moves away.
       let reward = 0;
       if (nc.kind === 'det') {
         const step = Math.hypot(nc.x - nb.x, nc.y - nb.y) / (nc.f - nb.f);
-        reward = R0 + R1 * Math.min(1, step / vRef) + baseReward;
+        const near = Math.min(1, Math.hypot(nc.x - tee.x, nc.y - tee.y) / nearR);
+        reward = R0 * near + R1 * Math.min(1, step / vRef) + baseReward;
       }
-      const gapC = Cm * (nc.f - nb.f - 1) - reward;
+      // frames where the ball was out of the picture (left at an edge, came
+      // back at an edge) are expected to be empty
+      const offscreen = fw !== undefined && nb.kind === 'det' && nc.kind === 'det' && nc.f - nb.f > 3 && atEdge(nb) && atEdge(nc);
+      const gapC = (offscreen ? 0.1 : Cm) * (nc.f - nb.f - 1) - reward;
       if (nb.kind === 'tee') {
         // leaving the tee: no velocity to compare against yet
         cost[c][j] = cost[b][0] + gapC;
@@ -511,7 +764,9 @@ function solveOnce(cands, tee, E, forced, o) {
     c = b; j = i;
   }
   path.reverse();
-  return path.map((p) => ({ f: p.f, x: p.x, y: p.y, kind: p.kind, fine: !!p.fine }));
+  const out = path.map((p) => ({ f: p.f, x: p.x, y: p.y, kind: p.kind, fine: !!p.fine }));
+  out.cost = bc;
+  return out;
 }
 
 // ---------- the landing ----------
@@ -528,25 +783,31 @@ export function landingIndex(path, o = {}) {
   const vDown = (o.vDown ?? 1.4) * k;     // ~4 px/frame at 1440x2560, 50 fps
   const pts = path.filter((p) => p.kind !== 'tee' || p === path[0]);
   if (pts.length < 4) return path.length - 1;
-  // highest point of the flight (smallest y) after leaving the tee
-  let apex = 0;
-  for (let i = 1; i < pts.length; i++) if (pts[i].y < pts[apex].y) apex = i;
-  const rose = pts[0].y - pts[apex].y > 6 * k;
+  // walk the path in order: once the ball has come down a fair way from the
+  // highest point so far, the first bounce (or long loss) is the landing
   const longGap = Math.max(5, Math.round((o.landGap ?? 0.12) * fps));
-  for (let i = Math.max(apex, 1) + 1; i < pts.length - 1; i++) {
+  // a gap that starts at the edge of the picture is the ball going out of
+  // view (over the top, usually), not the ball stopping
+  const fw = o.frameW, fh = o.frameH;
+  const m = 0.05 * Math.min(fw || Infinity, fh || Infinity);
+  const atEdge = (p) => fw !== undefined && (p.x < m || p.y < m || p.x > fw - m || p.y > fh - m);
+  let minY = pts[0].y;
+  for (let i = 1; i < pts.length - 1; i++) {
     const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    minY = Math.min(minY, a.y);
+    const rose = pts[0].y - minY > 6 * k;
     const v1 = (b.y - a.y) / (b.f - a.f);  // + = moving down the frame
     const v2 = (c.y - b.y) / (c.f - b.f);
-    const coming = v1 > vDown && (rose || v1 > 2 * vDown);
+    const coming = v1 > vDown && (rose ? b.y - minY > 6 * k : v1 > 2 * vDown);
     // it bounced or stuck
     if (coming && v2 < 0.3 * v1) return path.indexOf(b);
     // or it was coming down and then wasn't seen for a while: it landed and
     // stopped (anything found after that is something else moving)
-    if (coming && c.f - b.f >= longGap) return path.indexOf(b);
+    if (coming && c.f - b.f >= longGap && !atEdge(b)) return path.indexOf(b);
   }
   // rolls: stop at a long gap too, once the ball has travelled
   for (let i = 2; i < pts.length - 1; i++) {
-    if (pts[i + 1].f - pts[i].f >= 2 * longGap) return path.indexOf(pts[i]);
+    if (pts[i + 1].f - pts[i].f >= 2 * longGap && !atEdge(pts[i])) return path.indexOf(pts[i]);
   }
   return path.length - 1;
 }
@@ -698,7 +959,7 @@ export function mergeFine(cands, fine, k) {
 // 4. report what is still uncertain, so the person can look at those frames.
 export async function carefulTrack(a) {
   const { cands, tee, forced = {}, k, W, H, getWindows, onProgress = () => {} } = a;
-  const so = { fps: a.fps, H: a.analysisLong, endF: a.endF, ...(a.solveOpts || {}) };
+  const so = { fps: a.fps, H: a.analysisLong, endF: a.endF, frameW: a.W * k, frameH: a.H * k, ...(a.solveOpts || {}) };
   const toNative = (tr) => tr.map((p) => ({ f: p.f, x: p.x / k, y: p.y / k }));
   const forcedA = {};
   for (const [f, p] of Object.entries(forced)) forcedA[f] = { x: p.x * k, y: p.y * k };
@@ -740,8 +1001,12 @@ export async function carefulTrack(a) {
   // full-resolution look around the quick trail
   const byQ = indexTrail(quick);
   const reqs = [];
+  const inFrame = (p) => p && p.x >= 0 && p.y >= 0 && p.x < W && p.y < H;
   for (let f = quick[0].f + 1; f <= E.f; f++) {
     if (forced[f]) continue;
+    // the ball is above (or beside) the picture here: nothing to look at,
+    // and searching the edge would only find something else
+    if (!inFrame(byQ.get(f))) continue;
     const rect = fineRect(quick, f, W, H, { byF: byQ });
     if (rect) reqs.push({ f, rect });
   }
@@ -760,6 +1025,7 @@ export async function carefulTrack(a) {
     const byT = indexTrail(cur.trail);
     const more = [];
     for (const f of report.unsure) {
+      if (!inFrame(byT.get(f))) continue;
       const r1 = fineRect(cur.trail, f, W, H, { byF: byT, widen: 2.5 + round });
       if (r1) more.push({ f, rect: r1 });
       // also around where the quick pass had the ball, if it disagreed
@@ -813,6 +1079,7 @@ export function checkTrail(trail, fine, quick, forced, W, H, o = {}) {
   for (let i = 1; i < trail.length - 1; i++) {
     const p = trail[i];
     if (forced[p.f]) { seen++; total++; continue; }
+    if (p.x < 0 || p.y < 0 || p.x >= W || p.y >= H) continue; // out of the picture
     const a = byT.get(p.f - 1) || p, b = byT.get(p.f + 1) || p;
     const v = Math.hypot(b.x - a.x, b.y - a.y) / 2;
     const tol = Math.max(14 * s, 0.35 * v + 8 * s);

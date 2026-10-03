@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.1.0
+- A ball that's hard to see at address (small in the picture, or white on a
+  white rug) no longer sends the trail onto the player. The page notices it
+  can't watch the tee, searches a longer stretch, and finds the hit from the
+  motion itself: something leaving the tap point in a steady straight line.
+  Each possible hit is traced and judged, and the first real flight wins.
+- The ball's colour comes from what white looks like near the tee in that
+  light when it can't be sampled from the tap.
+- Flights that leave the top or side of the picture and come back are kept
+  (the gap is only allowed at the frame edge; a long gap in mid-picture
+  isn't a ball).
+- The landing is found walking along the flight in order, so junk after the
+  shot can't move it.
+- Tapping while the club is still touching the ball works: the club moving
+  off it isn't mistaken for the ball leaving.
+- Blobs right by the tee are never masked as part of the player (a ball
+  next to the hand at a chip).
+
 ## 2.0.0
 - Several clips at once: tap the ball in each, they're traced one after
   another, then checked and exported together (one MP4 each plus a zip).

@@ -4,15 +4,16 @@
 import {
   blur3, rgbaToGray, frameCandidates, teePresence, solvePath, smoothTrack,
   carefulTrack, checkTrail, mergeFine, landingIndex, ballColor,
-} from './core.js?v=2.0.0';
+  planWindow, colourFrame, whiteRef, findLaunch, pickLaunch,
+} from './core.js?v=2.1.0';
 import {
   Input, ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, AudioBufferSink,
   Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource,
   getFirstEncodableVideoCodec, getFirstEncodableAudioCodec,
 } from './vendor/mediabunny.min.mjs';
-import { makeZip } from './zip.js?v=2.0.0';
+import { makeZip } from './zip.js?v=2.1.0';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 const REPO = 'https://github.com/samram126/fingagolf-trail';
 
 const $ = (s) => document.querySelector(s);
@@ -356,6 +357,7 @@ async function analyze(c, step) {
   const k = Math.min(1, ANALYSIS_SHORT / short);
   const AW = Math.round(c.W * k), AH = Math.round(c.H * k);
   c.aScale = k; c.aDims = { AW, AH };
+  c.whiteNearTee = undefined;
   const off = document.createElement('canvas');
   off.width = AW; off.height = AH;
   const octx = off.getContext('2d', { willReadFrequently: true });
@@ -391,16 +393,28 @@ async function analyze(c, step) {
       if ((++k0 & 7) === 0) { step('Finding the shot', k0 / tot0, 'Watching for the ball to leave the tee'); await yieldUI(); }
     }
   }
-  const pres = teePresence(crops, CS, CS, c.tee.f, c.n - 1, { cx: c.tee.x - csx, cy: c.tee.y - csy });
-  const hold = Math.max(3, Math.round(0.3 * c.fps));
-  let leave = -1;
-  for (let f = c.tee.f + 1; f + hold < c.n && leave < 0; f++) {
-    let gone = true;
-    for (let j = 0; j < hold; j++) if (pres[f + j] < 1) { gone = false; break; }
-    if (gone) leave = f;
+  let pres = teePresence(crops, CS, CS, c.tee.f, c.n - 1, { cx: c.tee.x - csx, cy: c.tee.y - csy });
+  // Can the ball at address be seen well enough to tell when it leaves?
+  // If not (tiny, or white on a white rug), search longer and find the
+  // launch from the motion instead.
+  const plan = planWindow(pres, c.tee.f, c.n, c.fps, { seconds: SEARCH_SECONDS });
+  // tapped while the club was still touching the ball: judge "still on the
+  // tee" against a frame just before the hit instead
+  if (plan.refF !== undefined) pres = teePresence(crops, CS, CS, c.tee.f, c.n - 1, { cx: c.tee.x - csx, cy: c.tee.y - csy, refF: plan.refF });
+  // Sample the ball's colour just before the hit rather than at the tap: the
+  // light, and the phone's white balance (which settles after recording
+  // starts), then match the flight.
+  const cf = colourFrame(plan, pres, c.tee.f, c.fps);
+  if (cf > c.tee.f) {
+    const wc = await new CanvasSink(c.vtrack, { poolSize: 1 }).getCanvas(c.times[cf]);
+    if (wc) {
+      cctx.drawImage(wc.canvas, csx, csy, CS, CS, 0, 0, CS, CS);
+      c.rgb = ballColor(cctx.getImageData(0, 0, CS, CS).data, CS, CS, c.tee.x - csx, c.tee.y - csy, Math.max(3, Math.round(6 * short / 1440)));
+    }
   }
-  c.f0 = leave > 0 ? Math.max(c.tee.f, leave - Math.round(0.5 * c.fps)) : c.tee.f;
-  c.endF = Math.min(c.n - 3, (leave > 0 ? leave : c.tee.f) + Math.round(SEARCH_SECONDS * c.fps));
+  c.plan = plan;
+  c.f0 = plan.f0;
+  c.endF = plan.endF;
   const from = Math.max(0, c.f0 - 2), to = Math.min(c.n - 1, c.endF + 2);
   const blurred = new Map(), colour = new Map();
   const cands = {};
@@ -415,9 +429,10 @@ async function analyze(c, step) {
     const rgba = octx.getImageData(0, 0, AW, AH).data;
     blurred.set(i, blur3(rgbaToGray(rgba, AW * AH), AW, AH));
     colour.set(i, rgba);
+    if (c.whiteNearTee === undefined) c.whiteNearTee = whiteRef(rgba, AW, AH, c.tee.x * k, c.tee.y * k, 0.12 * Math.max(AW, AH));
     const f = i - 2;
     if (f > c.f0 && f <= c.endF && blurred.has(f - 2) && blurred.has(f)) {
-      cands[f] = frameCandidates(blurred.get(f - 2), blurred.get(f), blurred.get(i), AW, AH, { rgba: colour.get(f) });
+      cands[f] = frameCandidates(blurred.get(f - 2), blurred.get(f), blurred.get(i), AW, AH, { rgba: colour.get(f), keepNear: { x: c.tee.x * k, y: c.tee.y * k, r: 0.08 * Math.max(AW, AH) } });
     }
     blurred.delete(i - 4); colour.delete(i - 4);
     count++;
@@ -425,11 +440,26 @@ async function analyze(c, step) {
     if ((count & 3) === 0) await yieldUI();
   }
   c.cands = cands;
-  c.absent = pres;
+  c.absent = plan.reliable ? pres : null;
+  c.ballRadius = pres.ballRadius;
+  c.launch = undefined;
+  if (!plan.reliable) {
+    // the ball's colour can't be sampled from the tap: use what white looks
+    // like near the tee in this light
+    c.rgb = c.whiteNearTee || null;
+    const teeNow = { x: c.tee.x * k, y: c.tee.y * k, f0: c.f0, absent: null, rgb: c.rgb };
+    const L = findLaunch(cands, teeNow, c.f0, c.endF, { H: Math.max(AW, AH), fps: c.fps, W: AW });
+    const P = pickLaunch(cands, teeNow, L, { fps: c.fps, H: Math.max(AW, AH), endF: c.endF, frameW: AW, frameH: AH });
+    if (P) c.launch = P.f;
+  }
 }
 
-const teeA = (c) => ({ x: c.tee.x * c.aScale, y: c.tee.y * c.aScale, f0: c.f0 ?? c.tee.f, absent: c.absent, rgb: c.rgb });
-const solveOpts = (c) => ({ fps: c.fps, H: Math.max(c.aDims.AW, c.aDims.AH), endF: c.endF });
+const teeA = (c) => {
+  const t = { x: c.tee.x * c.aScale, y: c.tee.y * c.aScale, f0: c.f0 ?? c.tee.f, absent: c.absent, rgb: c.rgb };
+  if (c.launch !== undefined) { t.launch = c.launch; t.f1 = c.launch - 1; }
+  return t;
+};
+const solveOpts = (c) => ({ fps: c.fps, H: Math.max(c.aDims.AW, c.aDims.AH), endF: c.endF, frameW: c.aDims.AW, frameH: c.aDims.AH });
 
 // Passes 2-4: full-resolution look at every frame, re-solve, double-check,
 // wider search where the ball was hard to see, follow a roll to its stop.
@@ -443,7 +473,7 @@ async function careful(c, step) {
   const res = await carefulTrack({
     cands: c.cands, tee: teeA(c), forced: c.fixes,
     k: c.aScale, W: c.W, H: c.H, fps: c.fps, analysisLong: Math.max(c.aDims.AW, c.aDims.AH),
-    endF: c.endF, ballRadius: c.absent.ballRadius,
+    endF: c.endF, ballRadius: c.ballRadius,
     getWindows: (reqs, prog) => getWindows(c, reqs, prog),
     onProgress: (stage, frac) => { const t = stages[stage]; if (t) step(t[0], frac, t[1]); },
   });

@@ -59,6 +59,9 @@ try:
             _, pts = bynm[nm]
             tr = pg.evaluate(f'__fg.S.clips[{i}].trail')
             state = pg.evaluate(f'__fg.S.clips[{i}].status')
+            if not tr:
+                print(f'{nm}: {state} NO TRAIL note={pg.evaluate(f"__fg.S.clips[{i}].note")} tee={pg.evaluate(f"JSON.stringify(__fg.S.clips[{i}].tee)")}')
+                continue
             by = {q['f']: q for q in tr}
             last = tr[-1]
             errs = sorted(math.hypot((by.get(f) or last)['x'] - x, (by.get(f) or last)['y'] - y) for f, x, y in pts[1:-1] if f <= last['f'])

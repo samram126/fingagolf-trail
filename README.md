@@ -11,7 +11,11 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
    every frame is analysed at 720 px in colour: ball candidates come from
    consecutive-frame differencing, with the player masked out (small blobs
    inside large moving regions) and skin-coloured blobs penalised against the
-   ball's colour from the tap.
+   ball's colour from the tap. If the ball at address is too faint to watch
+   (tiny, or white on a white rug), a longer stretch is searched, the colour
+   comes from the room's white near the tee, and the hit is found from the
+   motion: each place where something leaves the tap point in a steady
+   straight line is traced and judged, and the first real flight wins.
 3. A dynamic-programming solver picks the most physical path from the tee:
    the ball must leave in a straight line at a speed that carries on, no
    impossible stops or swerves in the air, and frames are worth more when the
@@ -34,22 +38,26 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
 - `docs/app.js` — the page: taps, preview, analysis loop, MP4 export.
 - `docs/vendor/mediabunny.min.mjs` — [Mediabunny](https://mediabunny.dev)
   (MPL-2.0, unmodified) for WebCodecs decoding and MP4 muxing.
-- `test/run.mjs` — replays clips with known ball positions using only the two
-  taps and reports the error. `test/ui_test.py` drives the real page in
-  headless Chromium.
+- `test/pipeline.mjs` — the page's whole tracing pipeline outside the
+  browser (ffmpeg decoding), so tests run exactly what the page runs.
+  `test/sim.mjs` traces one clip, `test/eval.mjs` every hand-checked clip.
+  `test/ui_batch.py` drives the real page in headless Chromium.
 
 ## Accuracy
 
-On 37 hand-checked clips (flights, rolls, chips, shots toward the camera), a
-single tap gives a correct trail on 32: 90% of frames within 40 px at
-1440x2560 (median 2-3 px) and the end at the landing. The misses are a ball
-hidden under the finger at a flick (flagged), a roll starting under the hand,
-and three trails that run a few frames past where a rolling ball stopped
-(one "End the trail here" each).
+On 49 hand-checked clips (flights, rolls, chips, head-on shots, flights that
+leave the picture, white balls on a white rug), one tap gives a correct trail
+on 44: 90% of frames within 40 px at 1440x2560 (median 2-3 px) and the end at
+the landing. The misses: a ball hidden under the finger at a flick, and four
+rolls whose trail ends a few frames early or late (one "End the trail here"
+or one fix each). Tapping on the first frame instead of just before the shot
+gives the same results.
 
-Tests: `node test/run4.mjs` (single tap, careful mode, all clips — needs the
-original videos), `python3 test/ui_batch.py` (the real page in headless
-Chromium: several clips, taps, trace, end-here, export, zip).
+Tests: `TAPBACK=8 node test/eval.mjs` (single tap 8 frames before the hit,
+careful mode, all clips — needs the original videos; `TAPBACK=100` for an
+early tap), `node test/sim.mjs clip.mp4 frame x y` (one clip),
+`python3 test/ui_batch.py shots clip.webm:points.txt ...` (the real page in
+headless Chromium: several clips, taps, trace, end-here, export, zip).
 
 ## Deploy
 
