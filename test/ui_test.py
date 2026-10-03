@@ -52,6 +52,7 @@ try:
         pg.wait_for_function('window.__fg.S.step === "review"', timeout=300000)
         print('traced in %.1fs' % (time.time() - t0))
         trail = pg.evaluate('__fg.S.trail')
+        print('report:', pg.inner_text('#report'))
         by = {q['f']: q for q in trail}
         errs = []
         for f, x, y in pts[1:-1]:
@@ -60,6 +61,22 @@ try:
         errs.sort()
         print('strike', trail[0]['f'], 'true', tee[0], 'errors med %.0f p90 %.0f max %.0f' % (
             errs[len(errs)//2], errs[int(len(errs)*0.9)], errs[-1]))
+        if os.environ.get('FIX'):
+            vp = {f: (x, y) for f, x, y in pts}
+            for ff in [int(v) for v in os.environ['FIX'].split(',')]:
+                f = min(vp, key=lambda q: abs(q - ff))
+                pg.evaluate(f'__fg.goto({f})'); pg.wait_for_timeout(300)
+                pg.click('#fix')
+                for _ in range(2):
+                    v = pg.evaluate('__fg.viewRect()')
+                    r = pg.eval_on_selector('#stage', 'e => { const r = e.getBoundingClientRect(); return {l: r.left, t: r.top, w: r.width, h: r.height}; }')
+                    pg.mouse.click(r['l'] + (vp[f][0] - v['x']) / v['w'] * r['w'], r['t'] + (vp[f][1] - v['y']) / v['h'] * r['h'])
+                    pg.wait_for_timeout(200)
+            trail = pg.evaluate('__fg.S.trail')
+            by = {q['f']: q for q in trail}
+            errs = sorted(math.hypot(by[f]['x'] - x, by[f]['y'] - y) for f, x, y in pts[1:-1] if f in by)
+            print('after fixes', os.environ['FIX'], 'report:', pg.inner_text('#report').replace(chr(10), ' '), '| errors med %.0f p90 %.0f max %.0f' % (errs[len(errs)//2], errs[int(len(errs)*0.9)], errs[-1]))
+            pg.screenshot(path=f'{shots}/3b_after_fix.png')
         mid = (trail[0]['f'] + trail[-1]['f']) // 2
         pg.evaluate(f'__fg.goto({mid})'); pg.wait_for_timeout(400)
         pg.screenshot(path=f'{shots}/3_review_mid.png')

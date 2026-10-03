@@ -1,14 +1,17 @@
 // Fingagolf Trail — the page. Tracking lives in core.js; decoding and
 // encoding use Mediabunny (WebCodecs), so every frame is read and written
 // exactly, at hardware speed, whatever the device.
-import { blur3, rgbaToGray, frameCandidates, teePresence, solvePath, smoothTrack } from './core.js';
+import {
+  blur3, rgbaToGray, frameCandidates, teePresence, solvePath, smoothTrack,
+  carefulTrack, checkTrail, mergeFine,
+} from './core.js';
 import {
   Input, ALL_FORMATS, BlobSource, CanvasSink, EncodedPacketSink, AudioBufferSink,
   Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource,
   getFirstEncodableVideoCodec, getFirstEncodableAudioCodec,
 } from './vendor/mediabunny.min.mjs';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const REPO = 'https://github.com/samram126/fingagolf-trail';
 
 const $ = (s) => document.querySelector(s);
@@ -367,23 +370,106 @@ async function analyze() {
   }
   S.cands = cands;
   S.absent = teePresence(crops, C, C, S.tee.f, S.land.f, { cx: S.tee.x - csx, cy: S.tee.y - csy });
-  solve();
+  await careful();
   show('review');
+  showReport();
   await goto(Math.round((S.trail[0].f + S.land.f) / 2));
 }
 
+const teeA = () => ({ x: S.tee.x * S.aScale, y: S.tee.y * S.aScale, f0: S.tee.f, absent: S.absent });
+const landA = () => ({ f: S.land.f, x: S.land.x * S.aScale, y: S.land.y * S.aScale });
+const solveOpts = () => ({ fps: S.fps, H: Math.max(S.aDims.AW, S.aDims.AH) });
+
+// Careful mode: quick pass, then every frame re-checked at full resolution,
+// then a wider search wherever the ball wasn't found under the line.
+async function careful() {
+  const stages = {
+    quick: ['Finding the ball', 'First pass done'],
+    fine: ['Checking every frame up close', 'Looking at full resolution around the line'],
+    recheck: ['Double-checking the hard frames', 'Searching wider where the ball was hard to see'],
+  };
+  const res = await carefulTrack({
+    cands: S.cands, tee: teeA(), E: landA(), forced: S.fixes,
+    k: S.aScale, W: S.W, H: S.H, fps: S.fps, analysisLong: Math.max(S.aDims.AW, S.aDims.AH),
+    getWindows,
+    onProgress: (stage, frac) => { const t = stages[stage]; if (t) setBusy(t[0], frac, t[1]); },
+  });
+  Object.assign(S, { path: res.path, trail: res.trail, quick: res.quick, fine: res.fine, report: res.report });
+}
+
+// Full-resolution crops for the careful pass: for each request, the same
+// rectangle from frames f-2, f and f+2. Only the needed frames are decoded.
+async function getWindows(reqs, progress) {
+  const need = new Map();
+  const out = new Map();
+  for (const r of reqs) {
+    out.set(r.f, {});
+    for (const [d, slot] of [[-2, 'prev'], [0, 'cur'], [2, 'next']]) {
+      const i = r.f + d;
+      if (i < 0 || i >= S.n) continue;
+      if (!need.has(i)) need.set(i, []);
+      need.get(i).push({ r, slot });
+    }
+  }
+  const frames = [...need.keys()].sort((a, b) => a - b);
+  const sink = new CanvasSink(S.vtrack, { poolSize: 2 });
+  const cv = document.createElement('canvas');
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  let done = 0;
+  for await (const wc of sink.canvasesAtTimestamps(frames.map((i) => S.times[i] + 1e-6))) {
+    const i = frames[done++];
+    if (wc) {
+      for (const { r, slot } of need.get(i)) {
+        const { x, y, w, h } = r.rect;
+        if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+        cx.drawImage(wc.canvas, x, y, w, h, 0, 0, w, h);
+        out.get(r.f)[slot] = rgbaToGray(cx.getImageData(0, 0, w, h).data, w * h);
+      }
+    }
+    progress(done / frames.length);
+    if ((done & 3) === 0) await yieldUI();
+  }
+  for (const [f, w] of out) if (!w.prev || !w.cur || !w.next) out.delete(f);
+  return out;
+}
+
+// After a hand fix: re-solve with everything careful mode already found.
 function solve() {
   const k = S.aScale;
   const forced = {};
   for (const [f, p] of Object.entries(S.fixes)) forced[f] = { x: p.x * k, y: p.y * k };
-  S.path = solvePath(
-    S.cands,
-    { x: S.tee.x * k, y: S.tee.y * k, f0: S.tee.f, absent: S.absent },
-    { f: S.land.f, x: S.land.x * k, y: S.land.y * k },
-    forced,
-    { fps: S.fps, H: Math.max(S.aDims.AW, S.aDims.AH) },
-  );
+  S.path = solvePath(mergeFine(S.cands, S.fine || {}, k), teeA(), landA(), forced, solveOpts());
   S.trail = smoothTrack(S.path).map((p) => ({ f: p.f, x: p.x / k, y: p.y / k }));
+  S.report = checkTrail(S.trail, S.fine || {}, S.quick || S.trail, S.fixes, S.W, S.H);
+  showReport();
+}
+
+function showReport() {
+  const el = $('#report');
+  const r = S.report;
+  el.innerHTML = '';
+  if (!r) return;
+  const p = document.createElement('p');
+  if (!r.runs.length) {
+    p.textContent = r.seen === r.total
+      ? `Checked every frame up close: the ball is under the line in all ${r.total}.`
+      : `Checked every frame up close: the ball is under the line in ${r.seen} of ${r.total}. The others are short gaps (blur, or the ball crossing a light) and the line is bridged from both sides.`;
+    el.className = 'report ok';
+    el.append(p);
+    return;
+  }
+  el.className = 'report warn';
+  p.textContent = `Checked every frame up close. The ball was hard to see here — have a look, and fix a frame if the line is off:`;
+  const row = document.createElement('div');
+  row.className = 'chips';
+  for (const run of r.runs) {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.textContent = run.from === run.to ? `Frame ${run.from}` : `Frames ${run.from}–${run.to}`;
+    b.onclick = () => { stopPlay(); goto(run.from); };
+    row.append(b);
+  }
+  el.append(p, row);
 }
 
 // ---------- review ----------

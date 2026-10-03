@@ -175,4 +175,15 @@ input[type=range] { width: 100%; accent-color: var(--tracer); height: 32px; }
   display: flex; gap: 16px; justify-content: space-between; color: var(--moss); font-size: 15px;
 }
 .foot a { color: var(--moss); }
+.report { border-radius: var(--radius-sm); padding: 10px 12px; margin: 0 0 14px; }
+.report p { margin: 0; }
+.report.ok { background: rgba(169,194,164,.12); }
+.report.warn { background: rgba(255,210,63,.12); color: var(--chalk); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip {
+  min-height: 40px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+  border: 1.5px solid var(--flag); background: transparent; color: var(--flag);
+  font: 700 15px/1 var(--font-body);
+}
+.chip:hover { background: rgba(255,210,63,.12); }
 [hidden] { display: none !important; }

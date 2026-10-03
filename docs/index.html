@@ -51,7 +51,7 @@
   <section class="panel" id="panel" aria-live="polite">
     <div class="step" data-step="load">
       <h2>Trace a shot</h2>
-      <p>Film with the phone propped up and still. Then pick the clip — you'll tap the ball twice and the trail is drawn for you.</p>
+      <p>Film with the phone propped up and still. Then pick the clip — you'll tap the ball twice, and it finds the ball in every frame, checks each one up close, and draws the trail.</p>
       <label class="btn primary" for="file">Choose a shot video</label>
       <ul class="tips">
         <li>Closer is better: the ball should be easy to see.</li>
@@ -87,7 +87,8 @@
 
     <div class="step" data-step="review" hidden>
       <h2>Check the trail</h2>
-      <p>Play it back. If the line comes off the ball, stop on that frame, press <strong>Fix this frame</strong> and tap the ball.</p>
+      <div id="report" class="report" aria-live="polite"></div>
+      <p>Play it back. If the line comes off the ball anywhere, stop on that frame, press <strong>Fix this frame</strong> and tap the ball.</p>
       <div class="row">
         <button class="btn" id="fix">Fix this frame</button>
         <button class="btn" id="undoFix" disabled>Undo fix</button>

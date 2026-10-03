@@ -11,9 +11,14 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
    consecutive-frame differencing, and the most physical path through the
    candidates is chosen with dynamic programming. The tee is part of the
    search, so the moment the ball leaves is decided by the solver too.
-4. Check it. If the line comes off the ball anywhere, stop on that frame,
+4. **Careful mode** (always on): every frame of that first trail is looked at
+   again at full resolution, the path is solved again with those detections,
+   and each frame is checked for a ball under the line. Where it isn't found,
+   a wider window is searched and the path re-solved (twice). Frames that are
+   still uncertain are listed so the person can look at them.
+5. Check it. If the line comes off the ball anywhere, stop on that frame,
    press **Fix this frame**, tap the ball, and the path is re-solved through it.
-5. **Make the video** renders every frame with the trail and keeps the sound.
+6. **Make the video** renders every frame with the trail and keeps the sound.
 
 ## Files
 
@@ -28,10 +33,15 @@ Videos never leave the device: decoding, tracking and encoding all run locally.
 
 ## Accuracy
 
-On 37 hand-checked clips (flights, rolls, shots toward the camera), 34 trace
-correctly from the two taps alone (90% of frames within 40 px at 1440x2560).
-The rest need one or two fixes: the ball hidden under the finger at a flick,
-and a ball passing in front of the player's face.
+On 37 hand-checked clips (flights, rolls, shots toward the camera), 35 trace
+correctly from the two taps alone (90% of frames within 40 px at 1440x2560,
+median error 2 px). The two that don't — the ball hidden under the finger at a
+flick, and a ball passing in front of the player's face — are both flagged by
+the self-check at the frames that are wrong, and two hand fixes put them right.
+30 of the 35 good clips come back with nothing to check.
+
+Tests: `node test/run3.mjs` (careful mode on all clips, with what it flags),
+`node test/run.mjs` (first pass only).
 
 ## Deploy
 
