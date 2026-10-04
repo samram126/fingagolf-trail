@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fingagolf Trail</title>
-<meta name="description" content="A Claude skill that draws a shot-tracer trail on finger golf clips.">
+<title>Fingagolf Skills</title>
+<meta name="description" content="Claude skills for finger golf videos: shot-tracer trails and scored YouTube Shorts.">
 <style>
 :root {
   --bg: #f7f6f2; --card: #ffffff; --ink: #1d1d1b; --muted: #5f5e58;
@@ -44,6 +44,11 @@ b { font-weight: 600; }
 .q { background: var(--code); border-radius: 8px; padding: 2px 7px; white-space: nowrap; }
 p { margin: 0 0 12px; }
 .muted { color: var(--muted); }
+.skill h2 { font-size: 23px; margin-bottom: 4px; }
+.skill .what { color: var(--muted); margin-bottom: 14px; }
+h3 { font-size: 16px; margin: 18px 0 6px; }
+nav { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+nav a { color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 15px; background: var(--card); }
 footer { color: var(--muted); font-size: 14px; margin-top: 28px; }
 a { color: var(--red); }
 </style>
@@ -57,43 +62,72 @@ a { color: var(--red); }
       <circle cx="540" cy="100" r="7" fill="var(--ink)"/>
       <circle cx="60" cy="100" r="4" fill="var(--muted)"/>
     </svg>
-    <h1>Fingagolf Trail</h1>
-    <p class="lede">A Claude skill that draws a red shot-tracer trail on your finger golf clips, like a golf broadcast. You send Claude a clip, Claude watches the shot frame by frame and sends back the video with the ball's flight drawn on.</p>
-    <a class="dl" href="fingergolf-trail.zip" download>Download the skill</a>
-    <p class="ver">Version 1.3 · 4 October 2026 · works with any Claude plan</p>
+    <h1>Fingagolf Skills</h1>
+    <p class="lede">Two Claude skills for finger golf videos. <b>Trail</b> draws a red shot-tracer on a clip, like a golf broadcast. <b>Shorts</b> turns a round into scored YouTube Shorts. You send Claude your clips in a chat and it sends the finished videos back.</p>
+    <nav><a href="#trail">Trail</a><a href="#shorts">Shorts</a><a href="#install">Add to Claude</a><a href="#updates">Updates</a></nav>
   </header>
 
-  <section>
-    <h2>Add it to Claude</h2>
+  <section id="install">
+    <h2>Add a skill to Claude</h2>
     <ol>
+      <li>Download the skill's zip below.</li>
       <li>On claude.ai, open <b>Settings → Capabilities</b> and turn on <b>Code execution and file creation</b>.</li>
       <li>Go to <b>Customize → Skills</b>, tap <b>+</b>, then <b>Create skill → Upload a skill</b>.</li>
-      <li>Pick the <b>fingergolf-trail.zip</b> you downloaded. Don't unzip it.</li>
+      <li>Pick the zip. Don't unzip it. Do the same for the other skill if you want both.</li>
     </ol>
+    <p class="muted">Works with any Claude plan.</p>
   </section>
 
-  <section>
-    <h2>Use it</h2>
+  <section class="skill" id="trail">
+    <h2>Fingagolf Trail</h2>
+    <p class="what">Adds a shot-tracer trail that follows the ball from the hit to where it lands, and trims the video to the shot.</p>
+    <a class="dl" href="fingergolf-trail.zip" download>Download Trail</a>
+    <p class="ver">Version 1.3 · 4 October 2026</p>
+    <h3>How to use it</h3>
     <ol>
-      <li>Start a new chat and attach a clip of a shot.</li>
+      <li>Start a new chat and attach a clip of a shot (or several).</li>
       <li>Ask for a trail, for example <span class="q">add a trail to this</span>. Want a different look? Say so: <span class="q">make it a thick yellow trail</span>.</li>
-      <li>Claude finds the ball, checks the trail sits on it, and sends back the new video. If it picked the wrong shot or lost the ball, just say so in the chat.</li>
+      <li>Claude finds the ball, checks the trail sits on it, and sends back the video, cut from just before the hit to after the ball finishes. If it picked the wrong shot or lost the ball, just say so in the chat.</li>
     </ol>
-    <p class="muted">Best results: phone held still, ball clearly visible, one shot per clip. Several clips in one chat works too.</p>
+    <p class="muted">Colours: red, orange, yellow, gold, lime, green, cyan, blue, purple, pink, magenta, white, black, or any hex code. Thickness: thin, medium, thick, extra thick. Ask for <span class="q">the full clip</span> if you don't want it trimmed.</p>
+    <p class="muted">Best results: phone held still, ball clearly visible, one shot per clip.</p>
   </section>
 
-  <section>
+  <section class="skill" id="shorts">
+    <h2>Fingagolf Shorts</h2>
+    <p class="what">Turns a round, filmed one clip per shot, into vertical YouTube Shorts with a live scoreboard, BIRDIE / PAR pop-ups, drop tags and a big title.</p>
+    <a class="dl" href="fingagolf-shorts.zip" download>Download Shorts</a>
+    <p class="ver">Version 1.0 · 4 October 2026</p>
+    <h3>Before you start</h3>
+    <ul>
+      <li>Film one clip per shot. Each file name needs the shot number in it, like <span class="q">shot_251.mp4</span>; the clips are put in order by that number.</li>
+      <li>For trails in your Short, run the clips through Trail first. Shorts uses the trail version of a shot when it has both.</li>
+    </ul>
+    <h3>How to use it</h3>
+    <ol>
+      <li>Start a new chat and attach all the clips from the round (a zip works too). Ask <span class="q">make shorts from these</span>.</li>
+      <li>Claude checks for missing shot numbers and suggests which clips make up each hole. Confirm or correct it, and tell it the <b>par</b> and your <b>score</b> for every hole, plus any <b>drops</b> (+1 stroke) and which clip was played from the drop.</li>
+      <li>Pick the look: the <b>title</b> on screen from the first frame, a small <b>caption</b> under it (or none), and the <b>colours</b> (Classic red, Ocean blue, Golf green, or your own).</li>
+      <li>Optional: a <b>highlight</b>, like zooming in on a crazy putt or opening the video with it in slow motion.</li>
+      <li>Claude builds the videos (3 holes each unless you say otherwise) and sends them back. A second video can carry on the hole numbers and total from the first.</li>
+      <li>Want a change? New title, colour, par or score: just ask and it rebuilds.</li>
+    </ol>
+    <p class="muted">Dead time, like walking between putts, is cut out. The original sound is kept so you can talk over it.</p>
+  </section>
+
+  <section id="updates">
     <h2>Getting updates</h2>
-    <p>The skill keeps improving. When there's a new version here, download it, delete the old one in <b>Customize → Skills</b>, and upload the new zip.</p>
+    <p>The skills keep improving. When there's a new version here, download it, delete the old one in <b>Customize → Skills</b>, and upload the new zip.</p>
   </section>
 
   <section>
     <h2>What's new</h2>
     <ul>
-      <li><b>1.3</b> — Videos keep running 1.5 seconds after the trail ends (was 0.9), so you see the ball finish rolling or drop in.</li>
-      <li><b>1.2</b> — Every video is trimmed to the shot: it starts just before the hit and ends just after the ball lands, with the sound kept in sync. Ask for the full clip if you want it.</li>
-      <li><b>1.1</b> — Pick the trail's colour and thickness. Ask for it in your message (<span class="q">thick blue trail</span>), or ask for a change after; Claude redraws without re-tracking. Red and medium by default.</li>
-      <li><b>1.0</b> — First shared version: lofted shots, rolls, chips, shots filmed head-on, flights that leave the picture, white balls on a white rug.</li>
+      <li><b>Shorts 1.0</b> — First shared version.</li>
+      <li><b>Trail 1.3</b> — Videos keep running 1.5 seconds after the trail ends (was 0.9), so you see the ball finish rolling or drop in.</li>
+      <li><b>Trail 1.2</b> — Every video is trimmed to the shot: it starts just before the hit and ends after the ball lands, with the sound kept in sync. Ask for the full clip if you want it.</li>
+      <li><b>Trail 1.1</b> — Pick the trail's colour and thickness. Ask for it in your message, or ask for a change after; Claude redraws without re-tracking. Red and medium by default.</li>
+      <li><b>Trail 1.0</b> — First shared version: lofted shots, rolls, chips, shots filmed head-on, flights that leave the picture, white balls on a white rug.</li>
     </ul>
   </section>
 

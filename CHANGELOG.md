@@ -1,5 +1,9 @@
 # Changelog
 
+## Shorts 1.0 (2026-10-04)
+- Fingagolf Shorts added to the download page with directions: scored
+  YouTube Shorts from a round filmed one clip per shot.
+
 ## Skill 1.3 (2026-10-04)
 - Trimmed videos run 1.5 s past the trail's last point instead of 0.9 s, so a
   ball still rolling after it lands is seen finishing.
