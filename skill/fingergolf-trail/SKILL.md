@@ -90,8 +90,8 @@ Hex and `--width` work with every version of the scripts.
 
 ## Trim every clip to the shot
 
-Every video handed back starts just before the strike and ends just after the
-ball lands, whatever the source clip contains: walking up, placing the ball,
+Every video handed back starts just before the strike and ends once the ball
+has finished, whatever the source clip contains: walking up, placing the ball,
 practice swings and fetching the ball afterwards all go. In a batch, trim each
 clip to its own shot.
 
@@ -117,7 +117,7 @@ clip to its own shot.
 - Keep the whole clip only if the user asks for it (`--full`, or leave out
   `--trim` on an older copy).
 - Before handing back, check the trimmed clip's first and last frames: ball
-  still at address at the start, ball down at the end.
+  still at address at the start, ball at rest or in the hole at the end.
 
 ## Read this first: most failures are the footage, not the settings
 
