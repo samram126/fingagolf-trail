@@ -1,5 +1,12 @@
 # Changelog
 
+## Skill 1.2 (2026-10-04)
+- Every output is trimmed to the shot: 0.6 s before the strike to 0.9 s after
+  the landing, then the 1.2 s hold. `--full` keeps the whole clip.
+- Trimming now cuts the sound from the same moment (before, a trimmed clip
+  kept the sound from the start of the source, out of sync).
+- `draw_trail.py` trims the same way around the contact frame.
+
 ## Skill 1.1 (2026-10-03)
 - Trail colour and thickness are the user's pick: 13 named colours or any hex,
   and thin / medium / thick / extra thick. Asked for up front or changed after

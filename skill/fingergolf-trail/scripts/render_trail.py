@@ -407,14 +407,17 @@ def main():
                         "track, 1.5 to hug the measurements.")
     p.add_argument("--hold", type=float, default=1.2,
                    help="Seconds to freeze on the finished arc at the end.")
-    p.add_argument("--trim", action="store_true",
-                   help="Start the output a beat before the shot instead of at frame 0.")
-    p.add_argument("--lead-in", type=float, default=0.5,
-                   help="Seconds of footage kept before the shot when --trim is set.")
+    p.add_argument("--trim", action="store_true", default=True,
+                   help="Cut the output to the shot: from --lead-in before the "
+                        "strike to --tail after the landing (the default).")
+    p.add_argument("--full", dest="trim", action="store_false",
+                   help="Keep the whole source clip instead of trimming to the shot.")
+    p.add_argument("--lead-in", type=float, default=0.6,
+                   help="Seconds of footage kept before the strike when trimming.")
     p.add_argument("--tail", type=float, default=None,
                    help="Seconds of footage to keep after the trail's last "
-                        "point. Without it the clip runs to the end of the "
-                        "source, long after the shot is over.")
+                        "point (default 0.9 when trimming; with --full the "
+                        "clip runs to the end of the source).")
     p.add_argument("--no-audio", action="store_true")
     args = p.parse_args()
 
@@ -478,16 +481,25 @@ def main():
     offset = int(data.get("frame_offset", 0))
     start_out = 0
     if args.trim:
-        start_out = max(0, first_f - int(args.lead_in * fps))
+        start_out = max(0, first_f - int(round(args.lead_in * fps)))
+        if args.tail is None:
+            args.tail = 0.9
+    # the source frame the output starts on, and its time: the sound has to
+    # be cut from the same moment or the hit is heard before it's seen
+    start_src = int(start_out + offset)
+    start_sec = start_src / fps
 
     cmd = ["ffmpeg", "-y", "-loglevel", "error",
            "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}",
            "-r", f"{fps}", "-i", "-"]
     if not args.no_audio:
+        if start_sec > 0:
+            cmd += ["-ss", f"{start_sec:.3f}"]
         cmd += ["-i", src]
     cmd += ["-map", "0:v:0"]
     if not args.no_audio:
-        cmd += ["-map", "1:a:0?", "-c:a", "aac", "-b:a", "160k"]
+        cmd += ["-map", "1:a:0?", "-c:a", "aac", "-b:a", "160k",
+                "-af", "apad", "-shortest"]
     cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "15",
             "-pix_fmt", "yuv420p",
             "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", args.out]
@@ -531,6 +543,9 @@ def main():
                       "unphysical_dropped": n_unphys,
                       "frames": written,
                       "duration_sec": round(written / fps, 2),
+                      "trimmed": bool(args.trim),
+                      "start_frame": start_src,
+                      "start_sec": round(start_sec, 3),
                       "color": args.color}, indent=1))
 
 

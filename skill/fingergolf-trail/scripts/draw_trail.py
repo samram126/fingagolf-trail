@@ -109,6 +109,14 @@ def main():
     p.add_argument("--no-taper", action="store_true")
     p.add_argument("--no-head", action="store_true",
                    help="Hide the bright dot at the leading end.")
+    p.add_argument("--full", action="store_true",
+                   help="Keep the whole source clip. By default the output is "
+                        "cut to the shot: --lead-in before contact to --tail "
+                        "after the line finishes drawing.")
+    p.add_argument("--lead-in", type=float, default=0.6,
+                   help="Seconds kept before the contact frame.")
+    p.add_argument("--tail", type=float, default=0.9,
+                   help="Seconds kept after the line finishes drawing.")
     p.add_argument("--no-audio", action="store_true")
     args = p.parse_args()
 
@@ -146,15 +154,21 @@ def main():
     color = parse_color(args.color)
     width = line_width(W, args.width, args.thickness, default="thin")
     reveal = max(1, int(round(args.duration * fps)))
+    first = 0 if args.full else max(0, args.at - int(round(args.lead_in * fps)))
+    last = None if args.full else args.at + reveal + int(round(args.tail * fps))
+    start_sec = first / fps
 
     cmd = ["ffmpeg", "-y", "-loglevel", "error",
            "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{W}x{H}",
            "-r", f"{fps}", "-i", "-"]
     if not args.no_audio:
+        if start_sec > 0:
+            cmd += ["-ss", f"{start_sec:.3f}"]
         cmd += ["-i", args.video]
     cmd += ["-map", "0:v:0"]
     if not args.no_audio:
-        cmd += ["-map", "1:a:0?", "-c:a", "aac", "-b:a", "160k"]
+        cmd += ["-map", "1:a:0?", "-c:a", "aac", "-b:a", "160k",
+                "-af", "apad", "-shortest"]
     cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "18",
             "-pix_fmt", "yuv420p",
             "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", args.out]
@@ -166,6 +180,11 @@ def main():
         ok, frame = cap.read()
         if not ok:
             break
+        if last is not None and idx > last:
+            break
+        if idx < first:
+            idx += 1
+            continue
         if idx >= args.at:
             t = min(1.0, (idx - args.at + 1) / reveal)
             cut = max(2, int(round(t * len(path))))
@@ -195,6 +214,8 @@ def main():
 
     print(json.dumps({"ok": True, "out": os.path.abspath(args.out),
                       "contact_frame": args.at,
+                      "start_frame": first,
+                      "start_sec": round(start_sec, 3),
                       "reveal_frames": reveal,
                       "from": [round(v) for v in start],
                       "to": [round(v) for v in end],
