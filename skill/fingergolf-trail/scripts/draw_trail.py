@@ -115,7 +115,7 @@ def main():
                         "after the line finishes drawing.")
     p.add_argument("--lead-in", type=float, default=0.6,
                    help="Seconds kept before the contact frame.")
-    p.add_argument("--tail", type=float, default=0.9,
+    p.add_argument("--tail", type=float, default=1.5,
                    help="Seconds kept after the line finishes drawing.")
     p.add_argument("--no-audio", action="store_true")
     args = p.parse_args()

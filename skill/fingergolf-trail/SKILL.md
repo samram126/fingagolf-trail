@@ -95,14 +95,15 @@ ball lands, whatever the source clip contains: walking up, placing the ball,
 practice swings and fetching the ball afterwards all go. In a batch, trim each
 clip to its own shot.
 
-- **Start:** 0.6 s before the strike. **End:** 0.9 s after the ball lands, or
-  after it stops rolling or drops in. Then the finished trail holds for 1.2 s.
-- Always pass `--trim --lead-in 0.6 --tail 0.9` to `render_trail.py`. It cuts
+- **Start:** 0.6 s before the strike. **End:** 1.5 s after the trail's last
+  point (where the ball lands, or stops rolling or drops in), so a ball still
+  rolling after it lands is seen finishing. Then the last frame holds for 1.2 s.
+- Always pass `--trim --lead-in 0.6 --tail 1.5` to `render_trail.py`. It cuts
   from the track's first point, so the track must begin at the ball at address
   on the strike frame (anchor it there, as described above). A track that
   starts mid-air would cut the launch off.
 - `draw_trail.py` trims the same way around `--at` (0.6 s before contact to
-  0.9 s after the line finishes); `--full` turns that off.
+  1.5 s after the line finishes); `--full` turns that off.
 - Pick the strike and landing by looking at the frames, not from a motion
   peak — the biggest motion in a clip is often the hand placing the ball.
 - The sound is cut from the same moment, so the hit is heard when it's seen.
@@ -198,7 +199,7 @@ common case:
 python3 scripts/find_ball.py <video> --out ball.txt --preview ball_preview.png
 python3 scripts/points_to_track.py <video> --out track.json --points-file ball.txt
 python3 scripts/render_trail.py track.json -o trail.mp4 --color '#FF0000' --width 12 \
-  --trim --lead-in 0.6 --tail 0.9
+  --trim --lead-in 0.6 --tail 1.5
 ```
 
 It finds the ball at rest in the background, takes the frame it disappears as
@@ -344,7 +345,7 @@ where the ball is clear are needed; the gaps are filled in:
 
 ```bash
 python3 scripts/points_to_track.py <video> --out track.json --points-file ball.txt
-python3 scripts/render_trail.py track.json -o trail.mp4 --smooth 3 --trim --lead-in 0.6 --tail 0.9
+python3 scripts/render_trail.py track.json -o trail.mp4 --smooth 3 --trim --lead-in 0.6 --tail 1.5
 ```
 
 `draw_trail.py --grid <frame>` stamps a coordinate grid on a frame, which makes
@@ -442,7 +443,7 @@ something persistent and stationary, not a ball.
 
 ```bash
 python3 scripts/render_trail.py track.json -o trail.mp4 --color '#FF0000' --width 12 \
-  --trim --lead-in 0.6 --tail 0.9
+  --trim --lead-in 0.6 --tail 1.5
 ```
 
 The trail accumulates — once the ball passes a point it stays lit, so the
@@ -488,7 +489,7 @@ separates a real shot from things that flicker in place.
 - `--smooth` — averaging window; raise if the arc wobbles.
 - `--hold` — seconds frozen on the finished arc (default 1.2) so the shot reads
   before the clip loops.
-- `--trim --lead-in 0.6 --tail 0.9` — cut to the shot (see "Trim every clip
+- `--trim --lead-in 0.6 --tail 1.5` — cut to the shot (see "Trim every clip
   to the shot"); `--full` keeps the whole clip.
 
 ## Recommended pipeline (this is what worked on a full batch)
@@ -497,7 +498,7 @@ separates a real shot from things that flicker in place.
 python3 scripts/find_flight.py <video> --ball X,Y --out flight.txt
 python3 scripts/extend_to_landing.py <video> --points flight.txt --out full.txt
 python3 scripts/points_to_track.py <video> --points-file full.txt --out track.json
-python3 scripts/render_trail.py track.json -o trail.mp4 --trim --lead-in 0.6 --tail 0.9
+python3 scripts/render_trail.py track.json -o trail.mp4 --trim --lead-in 0.6 --tail 1.5
 ```
 
 `--ball` is the ball at address in the first frame (detect a bright round blob

@@ -1,5 +1,9 @@
 # Changelog
 
+## Skill 1.3 (2026-10-04)
+- Trimmed videos run 1.5 s past the trail's last point instead of 0.9 s, so a
+  ball still rolling after it lands is seen finishing.
+
 ## Skill 1.2 (2026-10-04)
 - Every output is trimmed to the shot: 0.6 s before the strike to 0.9 s after
   the landing, then the 1.2 s hold. `--full` keeps the whole clip.

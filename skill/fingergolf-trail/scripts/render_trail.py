@@ -416,7 +416,7 @@ def main():
                    help="Seconds of footage kept before the strike when trimming.")
     p.add_argument("--tail", type=float, default=None,
                    help="Seconds of footage to keep after the trail's last "
-                        "point (default 0.9 when trimming; with --full the "
+                        "point (default 1.5 when trimming; with --full the "
                         "clip runs to the end of the source).")
     p.add_argument("--no-audio", action="store_true")
     args = p.parse_args()
@@ -483,7 +483,7 @@ def main():
     if args.trim:
         start_out = max(0, first_f - int(round(args.lead_in * fps)))
         if args.tail is None:
-            args.tail = 0.9
+            args.tail = 1.5
     # the source frame the output starts on, and its time: the sound has to
     # be cut from the same moment or the hit is heard before it's seen
     start_src = int(start_out + offset)
