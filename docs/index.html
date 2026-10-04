@@ -64,7 +64,7 @@ a { color: var(--red); }
     </svg>
     <h1>Fingagolf Skills</h1>
     <p class="lede">Two Claude skills for finger golf videos. <b>Trail</b> draws a red shot-tracer on a clip, like a golf broadcast. <b>Shorts</b> turns a round into scored YouTube Shorts. You send Claude your clips in a chat and it sends the finished videos back.</p>
-    <nav><a href="#trail">Trail</a><a href="#shorts">Shorts</a><a href="#install">Add to Claude</a><a href="#updates">Updates</a></nav>
+    <nav><a href="#trail">Trail</a><a href="#shorts">Shorts</a><a href="#install">Add to Claude</a><a href="#settings">Model &amp; effort</a><a href="#updates">Updates</a></nav>
   </header>
 
   <section id="install">
@@ -75,7 +75,7 @@ a { color: var(--red); }
       <li>Go to <b>Customize → Skills</b>, tap <b>+</b>, then <b>Create skill → Upload a skill</b>.</li>
       <li>Pick the zip. Don't unzip it. Do the same for the other skill if you want both.</li>
     </ol>
-    <p class="muted">Works with any Claude plan.</p>
+    <p class="muted">Works with any Claude plan, including free. See <a href="#settings">which model and effort to use</a>.</p>
   </section>
 
   <section class="skill" id="trail">
@@ -113,6 +113,18 @@ a { color: var(--red); }
       <li>Want a change? New title, colour, par or score: just ask and it rebuilds.</li>
     </ol>
     <p class="muted">Dead time, like walking between putts, is cut out. The original sound is kept so you can talk over it.</p>
+  </section>
+
+  <section id="settings">
+    <h2>Which model and effort to use</h2>
+    <p>Pick both in the chat: tap the model name next to the send button, then choose the model, and under <b>Effort</b> the level. Higher effort thinks longer and gets better results on hard clips, but uses up your Claude usage faster.</p>
+    <ul>
+      <li><b>Trail:</b> Opus on <b>High</b> effort works best, especially for tricky clips (a white ball on a white rug, shots toward the camera, finger flicks). Sonnet is usually fine for easy clips. If a trail keeps landing on your hand or arm, try again on Opus, or raise the effort to Extra high or Max for that one clip.</li>
+      <li><b>Shorts:</b> Sonnet on <b>Medium</b> effort is enough. It mostly asks you questions and runs a ready-made script.</li>
+    </ul>
+    <h3>On the free plan</h3>
+    <p>The free plan doesn't include Opus, so use <b>Sonnet</b>: High effort for trails, Medium for Shorts, and avoid Max. Usage resets every five hours, and a trail uses a lot of it, so expect only a few clips at a time. Keep clips short and do one clip per chat to stretch it further. Pro gives at least 5 times more usage and adds Opus.</p>
+    <p class="muted">These are our recommendations, not measured results. Plan details can change; see Claude's <a href="https://claude.com/pricing">pricing</a> and <a href="https://support.claude.com/en/articles/8664678-change-the-model-effort-and-thinking-settings">effort settings</a> pages.</p>
   </section>
 
   <section id="updates">
